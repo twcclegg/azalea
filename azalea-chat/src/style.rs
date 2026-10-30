@@ -600,8 +600,9 @@ impl simdnbt::Deserialize for Style {
         let strikethrough = get_in_compound(&compound, "strikethrough").ok();
         let obfuscated = get_in_compound(&compound, "obfuscated").ok();
         let click_event = get_in_compound(&compound, "click_event").ok();
-        // TODO
-        // let hover_event = get_in_compound(&compound, "hover_event")?;
+        let hover_event = compound
+            .compound("hover_event")
+            .and_then(|c| HoverEvent::from_compound(&c));
         let insertion = get_in_compound(&compound, "insertion").ok();
         let font = get_in_compound(&compound, "font").ok();
         Ok(Style {
@@ -613,7 +614,7 @@ impl simdnbt::Deserialize for Style {
             strikethrough,
             obfuscated,
             click_event,
-            hover_event: None,
+            hover_event,
             insertion,
             font,
         })
@@ -623,6 +624,65 @@ impl simdnbt::Deserialize for Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "azalea-buf")]
+    #[test]
+    fn hover_events_decode() {
+        use azalea_buf::AzBuf;
+        use simdnbt::owned::{NbtCompound, NbtTag};
+
+        use crate::FormattedText;
+        // A component as 26.2 writes it over the network (unnamed NBT), read as
+        // azalea reads chat; its style's hover event.
+        let decode = |hover: NbtCompound| {
+            let mut root = NbtCompound::new();
+            root.insert("text", "hover me");
+            root.insert("hover_event", hover);
+            let mut bytes = Vec::new();
+            NbtTag::Compound(root).write(&mut bytes);
+            let text =
+                FormattedText::azalea_read(&mut std::io::Cursor::new(bytes.as_slice())).unwrap();
+            text.get_base().style.hover_event.clone()
+        };
+        let mut text = NbtCompound::new();
+        text.insert("action", "show_text");
+        text.insert("value", "Heals you");
+        assert_eq!(
+            decode(text),
+            Some(HoverEvent::ShowText {
+                value: Box::new(FormattedText::from("Heals you".to_owned()))
+            })
+        );
+        let mut item = NbtCompound::new();
+        item.insert("action", "show_item");
+        item.insert("id", "minecraft:diamond_sword");
+        item.insert("count", 3);
+        assert_eq!(
+            decode(item),
+            Some(HoverEvent::ShowItem {
+                id: "minecraft:diamond_sword".into(),
+                count: 3
+            })
+        );
+        let mut entity = NbtCompound::new();
+        entity.insert("action", "show_entity");
+        entity.insert("id", "minecraft:pig");
+        entity.insert(
+            "uuid",
+            NbtTag::IntArray(vec![0x0102_0304, 0x0506_0708, 0x090a_0b0c, 0x0d0e_0f10]),
+        );
+        let Some(HoverEvent::ShowEntity { id, uuid, name }) = decode(entity) else {
+            panic!()
+        };
+        assert_eq!(
+            (id.as_str(), uuid.as_str(), name),
+            (
+                "minecraft:pig",
+                "01020304-0506-0708-090a-0b0c0d0e0f10",
+                None
+            )
+        );
+    }
 
     #[test]
     fn text_color_named_colors() {
