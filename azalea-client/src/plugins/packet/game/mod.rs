@@ -21,7 +21,9 @@ use azalea_protocol::{
     common::movements::MoveFlags,
     packets::{
         ConnectionProtocol,
-        game::{c_move_entity_pos_rot::CompactLookDirection, *},
+        game::{
+            c_move_entity_pos_rot::CompactLookDirection, c_player_chat::PackedMessageSignature, *,
+        },
     },
 };
 use azalea_registry::builtin::EntityKind;
@@ -34,7 +36,10 @@ use crate::{
     ClientInformation,
     block_update::QueuedServerBlockUpdates,
     chunks,
-    client_chat::{ChatPacket, ChatReceivedEvent},
+    client_chat::{
+        ChatPacket, ChatReceivedEvent,
+        last_seen::{LastSeenMessagesTracker, MAX_PENDING_MESSAGES},
+    },
     connection::RawConnection,
     cookies::{RequestCookieEvent, StoreCookieEvent},
     disconnect::DisconnectEvent,
@@ -1019,7 +1024,24 @@ impl GamePacketHandler<'_> {
     pub fn player_chat(&mut self, p: &ClientboundPlayerChat) {
         debug!("Got player chat packet {p:?}");
 
-        as_system::<MessageWriter<_>>(self.ecs, |mut events| {
+        as_system::<(
+            Commands,
+            Query<&mut LastSeenMessagesTracker>,
+            MessageWriter<_>,
+        )>(self.ecs, |(mut commands, mut query, mut events)| {
+            // like vanilla's ClientPacketListener.markMessageAsProcessed
+            if let Some(signature) = &p.signature
+                && let Ok(mut last_seen) = query.get_mut(self.player)
+                && last_seen.add_pending(signature.clone())
+                && last_seen.offset() > MAX_PENDING_MESSAGES
+            {
+                let messages = last_seen.get_and_clear_offset();
+                commands.trigger(SendGamePacketEvent::new(
+                    self.player,
+                    ServerboundChatAck { messages },
+                ));
+            }
+
             events.write(ChatReceivedEvent {
                 entity: self.player,
                 packet: ChatPacket::Player(Arc::new(p.clone())),
@@ -1263,7 +1285,18 @@ impl GamePacketHandler<'_> {
 
     pub fn custom_chat_completions(&mut self, _p: &ClientboundCustomChatCompletions) {}
 
-    pub fn delete_chat(&mut self, _p: &ClientboundDeleteChat) {}
+    pub fn delete_chat(&mut self, p: &ClientboundDeleteChat) {
+        // deletions that refer to a signature by its id in the server's
+        // signature cache can't be matched, since we don't keep that cache
+        let PackedMessageSignature::Signature(signature) = &p.signature else {
+            return;
+        };
+        as_system::<Query<&mut LastSeenMessagesTracker>>(self.ecs, |mut query| {
+            if let Ok(mut last_seen) = query.get_mut(self.player) {
+                last_seen.ignore_pending(signature);
+            }
+        });
+    }
 
     pub fn explode(&mut self, p: &ClientboundExplode) {
         debug!("Got explode packet {p:?}");

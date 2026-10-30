@@ -2,11 +2,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use azalea_protocol::packets::{
     Packet,
-    game::{ServerboundChat, ServerboundChatCommand, s_chat::LastSeenMessagesUpdate},
+    game::{ServerboundChat, ServerboundChatCommand},
 };
 use bevy_ecs::prelude::*;
 
-use super::ChatKind;
+use super::{ChatKind, last_seen::LastSeenMessagesTracker};
 use crate::packet::game::SendGamePacketEvent;
 #[cfg(feature = "online-mode")]
 use crate::{account::Account, chat_signing::ChatSigningSession};
@@ -32,6 +32,7 @@ pub struct SendChatKindEvent {
 pub fn handle_send_chat_kind_event(
     mut events: MessageReader<SendChatKindEvent>,
     mut commands: Commands,
+    mut last_seen_query: Query<&mut LastSeenMessagesTracker>,
     #[cfg(feature = "online-mode")] mut query: Query<(&Account, &mut ChatSigningSession)>,
 ) {
     for event in events.read() {
@@ -47,6 +48,12 @@ pub fn handle_send_chat_kind_event(
         let packet = match event.kind {
             ChatKind::Message => {
                 let salt = azalea_crypto::signing::make_salt();
+                // like vanilla, every chat message acknowledges the messages
+                // we've seen, whether or not it's signed
+                let (last_seen, last_seen_messages) = last_seen_query
+                    .get_mut(event.entity)
+                    .map(|mut tracker| tracker.generate_and_apply_update())
+                    .unwrap_or_default();
 
                 #[cfg(feature = "online-mode")]
                 let signature = if let Ok((account, mut chat_session)) = query.get_mut(event.entity)
@@ -57,12 +64,16 @@ pub fn handle_send_chat_kind_event(
                         salt,
                         timestamp,
                         &content,
+                        last_seen,
                     ))
                 } else {
                     None
                 };
                 #[cfg(not(feature = "online-mode"))]
-                let signature = None;
+                let signature = {
+                    let _ = last_seen;
+                    None
+                };
 
                 ServerboundChat {
                     message: content,
@@ -74,8 +85,7 @@ pub fn handle_send_chat_kind_event(
                         .expect("Instant should fit into a u64"),
                     salt,
                     signature,
-                    // TODO: implement last_seen_messages
-                    last_seen_messages: LastSeenMessagesUpdate::default(),
+                    last_seen_messages,
                 }
             }
             .into_variant(),
@@ -96,6 +106,7 @@ pub fn create_signature(
     salt: u64,
     timestamp: SystemTime,
     message: &str,
+    last_seen_messages: Vec<azalea_crypto::signing::MessageSignature>,
 ) -> azalea_crypto::signing::MessageSignature {
     use azalea_crypto::signing::SignChatMessageOptions;
 
@@ -110,6 +121,7 @@ pub fn create_signature(
         salt,
         timestamp,
         message: message.to_owned(),
+        last_seen_messages,
         private_key: certs.private_key.clone(),
     });
 

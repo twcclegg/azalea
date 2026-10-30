@@ -1,6 +1,7 @@
 //! Implementations of chat-related features.
 
 pub mod handler;
+pub mod last_seen;
 
 use std::sync::Arc;
 
@@ -119,8 +120,8 @@ impl ChatPacket {
                 p.body.content.clone(),
             ),
             ChatPacket::Disguised(p) => (
-                // disguised chat packets are basically the same as player chat packets but without
-                // the chat signing things
+                // disguised chat packets are basically the same as player chat
+                // packets but without the chat signing things
                 Some(p.chat_type.name.to_string()),
                 p.message.to_string(),
             ),
