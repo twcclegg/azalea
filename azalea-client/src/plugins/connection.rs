@@ -275,6 +275,10 @@ pub fn handle_raw_packet(
             let packet = Arc::new(deserialize_packet::<ClientboundGamePacket>(stream)?);
             trace!("Packet: {packet:?}");
             game::process_packet(ecs, entity, packet.as_ref());
+            ecs.trigger(game::GamePacketHandledEvent {
+                entity,
+                packet: packet.clone(),
+            });
             queued_packet_events
                 .game
                 .push(ReceiveGamePacketEvent { entity, packet });

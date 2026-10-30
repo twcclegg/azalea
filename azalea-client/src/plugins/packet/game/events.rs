@@ -38,6 +38,31 @@ pub struct ReceiveGamePacketEvent {
     pub packet: Arc<ClientboundGamePacket>,
 }
 
+/// Triggered for each game packet right after azalea has handled it, in the
+/// order packets arrive.
+///
+/// Unlike [`ReceiveGamePacketEvent`], which is only read after a whole batch of
+/// packets has been handled, an observer of this event sees the world exactly
+/// as it was after this packet (for example, the item entity a
+/// `ClientboundTakeItemEntity` refers to, before it's removed).
+/// ```
+/// # use azalea_client::packet::game::GamePacketHandledEvent;
+/// # use azalea_protocol::packets::game::ClientboundGamePacket;
+/// # use bevy_ecs::prelude::*;
+///
+/// fn on_packet(event: On<GamePacketHandledEvent>) {
+///     if let ClientboundGamePacket::TakeItemEntity(p) = event.packet.as_ref() {
+///         // ...
+///     }
+/// }
+/// ```
+#[derive(Clone, Debug, EntityEvent)]
+pub struct GamePacketHandledEvent {
+    /// The client entity that received the packet.
+    pub entity: Entity,
+    pub packet: Arc<ClientboundGamePacket>,
+}
+
 /// An event for sending a packet to the server while we're in the `game` state.
 #[derive(Clone, Debug, EntityEvent)]
 pub struct SendGamePacketEvent {

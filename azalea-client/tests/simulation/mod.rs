@@ -10,6 +10,7 @@ mod despawn_entities_when_changing_dimension;
 mod elytra_start_conditions;
 mod enchantments;
 mod fast_login;
+mod game_packet_handled_in_order;
 mod login_to_dimension_with_same_name;
 mod mine_block_rollback;
 mod mine_block_timing_hand;
