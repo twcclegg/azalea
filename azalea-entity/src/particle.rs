@@ -67,7 +67,7 @@ pub enum Particle {
     InstantEffect,
     Item(ItemParticle),
     Vibration(Box<VibrationParticle>),
-    Trail,
+    Trail(Box<TrailParticle>),
     PauseMobGrowth,
     ResetMobGrowth,
     ItemSlime,
@@ -260,7 +260,7 @@ impl From<ParticleKind> for Particle {
             ParticleKind::OminousSpawning => Self::OminousSpawning,
             ParticleKind::RaidOmen => Self::RaidOmen,
             ParticleKind::TrialOmen => Self::TrialOmen,
-            ParticleKind::Trail => Self::Trail,
+            ParticleKind::Trail => Self::Trail(Box::default()),
             ParticleKind::BlockCrumble => Self::BlockCrumble,
             ParticleKind::Firefly => Self::Firefly,
             ParticleKind::CopperFireFlame => Self::CopperFireFlame,
@@ -336,6 +336,16 @@ impl Default for PositionSource {
     }
 }
 
+/// A trail particle's options, as vanilla's `TrailParticleOption`. The color is
+/// ARGB.
+#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
+pub struct TrailParticle {
+    pub target: azalea_core::position::Vec3,
+    pub color: u32,
+    #[var]
+    pub duration: i32,
+}
+
 #[derive(AzBuf, Clone, Debug, Default, PartialEq)]
 pub struct SculkChargeParticle {
     pub roll: f32,
@@ -357,4 +367,47 @@ pub struct GeyserParticle {
 pub struct GeyserBaseParticle {
     pub water_blocks: i32,
     pub burst_impulse_base: f32,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use azalea_buf::{AzBuf, AzBufVar};
+    use azalea_registry::Registry;
+
+    use super::*;
+
+    #[test]
+    fn trails_carry_their_options() {
+        // As 26.2 writes a trail: its type id, the target (three doubles), the
+        // colour (int), the duration (VarInt), then whatever follows in the
+        // packet.
+        let mut b = Vec::new();
+        ParticleKind::Trail
+            .to_u32()
+            .azalea_write_var(&mut b)
+            .unwrap();
+        for v in [10.5f64, 70., -4.25] {
+            b.extend(v.to_be_bytes());
+        }
+        b.extend(0xFF33_AA55u32.to_be_bytes());
+        40i32.azalea_write_var(&mut b).unwrap();
+        b.push(0xEE);
+        let mut cursor = Cursor::new(b.as_slice());
+        let particle = Particle::azalea_read(&mut cursor).unwrap();
+        let Particle::Trail(trail) = particle else {
+            panic!("{particle:?}")
+        };
+        assert_eq!(
+            (trail.target.x, trail.target.y, trail.target.z),
+            (10.5, 70., -4.25)
+        );
+        assert_eq!((trail.color, trail.duration), (0xFF33_AA55, 40));
+        assert_eq!(
+            cursor.position() as usize,
+            b.len() - 1,
+            "stops where the trail ends"
+        );
+    }
 }
