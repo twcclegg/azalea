@@ -9,8 +9,9 @@ use azalea_core::{
     position::{ChunkPos, Vec3},
 };
 use azalea_entity::{
-    Dead, EntityBundle, EntityKindComponent, HasClientLoaded, LoadedBy, LocalEntity, LookDirection,
-    Physics, PlayerAbilities, Position,
+    Attributes, Dead, EntityBundle, EntityKindComponent, HasClientLoaded, LoadedBy, LocalEntity,
+    LookDirection, Physics, PlayerAbilities, Position,
+    attributes::sprinting_modifier,
     effect_events::{AddEffectEvent, RemoveEffectsEvent},
     indexing::{EntityIdIndex, EntityUuidIndex},
     inventory::Inventory,
@@ -717,8 +718,46 @@ impl GamePacketHandler<'_> {
         });
     }
 
-    pub fn update_attributes(&mut self, _p: &ClientboundUpdateAttributes) {
-        // debug!("Got update attributes packet {p:?}");
+    pub fn update_attributes(&mut self, p: &ClientboundUpdateAttributes) {
+        as_system::<(
+            Query<&EntityIdIndex>,
+            Query<(&mut Attributes, Has<LocalEntity>)>,
+        )>(self.ecs, |(query, mut attributes_query)| {
+            let entity_id_index = query.get(self.player).unwrap();
+            let Some(entity) = entity_id_index.get_by_minecraft_entity(p.entity_id) else {
+                debug!(
+                    "Got update attributes packet for unknown entity id {}",
+                    p.entity_id
+                );
+                return;
+            };
+            let Ok((mut attributes, is_local)) = attributes_query.get_mut(entity) else {
+                return;
+            };
+
+            // like vanilla, each attribute sent replaces the base value and
+            // every modifier, except that our own sprinting modifier is kept as
+            // we predicted it, since the server's may be outdated
+            let sprinting_id = sprinting_modifier().id;
+            for snapshot in &p.values {
+                let Some(instance) = attributes.get_mut(snapshot.attribute) else {
+                    continue;
+                };
+                let sprinting = is_local
+                    .then(|| instance.get(&sprinting_id).cloned())
+                    .flatten();
+                instance.base = snapshot.base;
+                instance.clear_modifiers();
+                for modifier in &snapshot.modifiers {
+                    if !is_local || modifier.id != sprinting_id {
+                        instance.insert(modifier.clone());
+                    }
+                }
+                if let Some(sprinting) = sprinting {
+                    instance.insert(sprinting);
+                }
+            }
+        });
     }
 
     pub fn set_entity_motion(&mut self, p: &ClientboundSetEntityMotion) {

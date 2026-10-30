@@ -24,3 +24,4 @@ mod reply_to_ping_with_pong;
 mod set_health_before_login;
 mod teleport_movement;
 mod ticks_alive;
+mod update_attributes;

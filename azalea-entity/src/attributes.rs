@@ -109,6 +109,21 @@ impl AttributeInstance {
     pub fn remove(&mut self, id: &Identifier) -> Option<AttributeModifier> {
         self.modifiers_by_id.remove(id)
     }
+
+    /// Returns the modifier with the given ID, if present.
+    pub fn get(&self, id: &Identifier) -> Option<&AttributeModifier> {
+        self.modifiers_by_id.get(id)
+    }
+
+    /// Iterates over every modifier on this attribute.
+    pub fn modifiers(&self) -> impl Iterator<Item = &AttributeModifier> {
+        self.modifiers_by_id.values()
+    }
+
+    /// Remove every modifier from this attribute.
+    pub fn clear_modifiers(&mut self) {
+        self.modifiers_by_id.clear();
+    }
 }
 
 pub fn sprinting_modifier() -> AttributeModifier {
