@@ -1,4 +1,5 @@
 use azalea_buf::AzBuf;
+use azalea_inventory::NonEmptyItemStack;
 use azalea_registry::{
     HolderSet,
     builtin::{DataComponentKind, ItemKind},
@@ -94,18 +95,7 @@ pub struct ItemSlotDisplay {
 }
 #[derive(AzBuf, Clone, Debug, PartialEq)]
 pub struct ItemStackSlotDisplay {
-    pub stack: ItemStackTemplate,
-}
-
-/// Vanilla's `ItemStackTemplate`: the item, then its count, then its component
-/// patch. Unlike [`ItemStack`](azalea_inventory::ItemStack), the item comes
-/// before the count and is never empty.
-#[derive(AzBuf, Clone, Debug, PartialEq)]
-pub struct ItemStackTemplate {
-    pub item: ItemKind,
-    #[var]
-    pub count: i32,
-    pub components: azalea_inventory::DataComponentPatch,
+    pub stack: NonEmptyItemStack,
 }
 #[derive(AzBuf, Clone, Debug, PartialEq)]
 pub struct DyedSlotDemo {

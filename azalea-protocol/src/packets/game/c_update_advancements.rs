@@ -5,6 +5,7 @@ use std::{
 
 use azalea_buf::AzBuf;
 use azalea_chat::FormattedText;
+use azalea_inventory::NonEmptyItemStack;
 use azalea_protocol_macros::ClientboundGamePacket;
 use azalea_registry::identifier::Identifier;
 use indexmap::IndexMap;
@@ -30,7 +31,7 @@ pub struct Advancement {
 pub struct DisplayInfo {
     pub title: FormattedText,
     pub description: FormattedText,
-    pub icon: crate::common::recipe::ItemStackTemplate,
+    pub icon: NonEmptyItemStack,
     pub frame: FrameType,
     pub show_toast: bool,
     pub hidden: bool,
@@ -134,10 +135,10 @@ mod tests {
                     display: Some(Box::new(DisplayInfo {
                         title: FormattedText::from("title".to_owned()),
                         description: FormattedText::from("description".to_owned()),
-                        icon: crate::common::recipe::ItemStackTemplate {
-                            item: azalea_registry::builtin::ItemKind::Stone,
+                        icon: NonEmptyItemStack {
+                            kind: azalea_registry::builtin::ItemKind::Stone,
                             count: 1,
-                            components: Default::default(),
+                            component_patch: Default::default(),
                         },
                         frame: FrameType::Task,
                         show_toast: true,
@@ -228,7 +229,7 @@ mod template_tests {
         b.extend(1.5f32.to_be_bytes());
         b.extend((-2f32).to_be_bytes());
         let d = DisplayInfo::azalea_read(&mut Cursor::new(b.as_slice())).unwrap();
-        assert_eq!((d.icon.item, d.icon.count, d.frame), (azalea_registry::builtin::ItemKind::GrassBlock, 1, FrameType::Goal));
+        assert_eq!((d.icon.kind, d.icon.count, d.frame), (azalea_registry::builtin::ItemKind::GrassBlock, 1, FrameType::Goal));
         assert_eq!((d.title.to_string().as_str(), d.show_toast, d.hidden, d.x, d.y), ("Hi", true, false, 1.5, -2.));
     }
 }
