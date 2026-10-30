@@ -39,6 +39,7 @@ use crate::{
     client_chat::{
         ChatPacket, ChatReceivedEvent,
         last_seen::{LastSeenMessagesTracker, MAX_PENDING_MESSAGES},
+        signed_commands::ServerCommandTree,
     },
     connection::RawConnection,
     cookies::{RequestCookieEvent, StoreCookieEvent},
@@ -382,8 +383,17 @@ impl GamePacketHandler<'_> {
         debug!("Got difficulty packet {p:?}");
     }
 
-    pub fn commands(&mut self, _p: &ClientboundCommands) {
+    pub fn commands(&mut self, p: &ClientboundCommands) {
         debug!("Got declare commands packet");
+
+        as_system::<Query<&mut ServerCommandTree>>(self.ecs, |mut query| {
+            if let Ok(mut tree) = query.get_mut(self.player) {
+                *tree = ServerCommandTree {
+                    nodes: p.entries.clone(),
+                    root_index: p.root_index as usize,
+                };
+            }
+        });
     }
 
     pub fn player_abilities(&mut self, p: &ClientboundPlayerAbilities) {

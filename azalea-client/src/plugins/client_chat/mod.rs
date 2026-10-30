@@ -2,6 +2,7 @@
 
 pub mod handler;
 pub mod last_seen;
+pub mod signed_commands;
 
 use std::sync::Arc;
 

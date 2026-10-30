@@ -26,7 +26,7 @@ use crate::{
     attack,
     block_update::QueuedServerBlockUpdates,
     chunks::ChunkBatchInfo,
-    client_chat::last_seen::LastSeenMessagesTracker,
+    client_chat::{last_seen::LastSeenMessagesTracker, signed_commands::ServerCommandTree},
     connection::RawConnection,
     cookies::ServerCookies,
     interact::BlockStatePredictionHandler,
@@ -70,6 +70,7 @@ pub struct JoinedClientBundle {
     pub experience: Experience,
     pub cookies: ServerCookies,
     pub last_seen_messages: LastSeenMessagesTracker,
+    pub server_command_tree: ServerCommandTree,
 
     pub entity_id_index: EntityIdIndex,
 
