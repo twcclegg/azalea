@@ -18,7 +18,7 @@ pub const MAX_PENDING_MESSAGES: u32 = 64;
 /// Each signed chat message we send includes the signatures of the last
 /// messages we've seen, and tells the server which messages in its window we
 /// saw, so the server can validate the chain of messages.
-#[derive(Clone, Component, Debug)]
+#[derive(Clone, Component, Debug, Default)]
 pub struct LastSeenMessagesTracker {
     entries: [Option<LastSeenEntry>; LAST_SEEN_MESSAGES_MAX_LENGTH],
     tail: usize,
@@ -31,17 +31,6 @@ struct LastSeenEntry {
     signature: MessageSignature,
     /// Whether this message has been seen but not yet acknowledged.
     pending: bool,
-}
-
-impl Default for LastSeenMessagesTracker {
-    fn default() -> Self {
-        Self {
-            entries: Default::default(),
-            tail: 0,
-            offset: 0,
-            last_tracked: None,
-        }
-    }
 }
 
 impl LastSeenMessagesTracker {
