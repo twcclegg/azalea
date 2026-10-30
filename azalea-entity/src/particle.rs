@@ -1,6 +1,10 @@
 use azalea_block::BlockState;
 use azalea_buf::AzBuf;
-use azalea_core::{color::RgbColor, entity_id::MinecraftEntityId, position::BlockPos};
+use azalea_core::{
+    color::RgbColor,
+    entity_id::MinecraftEntityId,
+    position::{BlockPos, Vec3},
+};
 use azalea_inventory::ItemStack;
 use azalea_registry::builtin::ParticleKind;
 
@@ -26,7 +30,7 @@ pub enum Particle {
     CopperFireFlame,
     Crit,
     DamageIndicator,
-    DragonBreath,
+    DragonBreath(PowerParticle),
     DrippingLava,
     FallingLava,
     LandingLava,
@@ -34,7 +38,7 @@ pub enum Particle {
     FallingWater,
     Dust(DustParticle),
     DustColorTransition(DustColorTransitionParticle),
-    Effect,
+    Effect(SpellParticle),
     ElderGuardian,
     EnchantedHit,
     Enchant,
@@ -54,17 +58,17 @@ pub enum Particle {
     Infested,
     CherryLeaves,
     PaleOakLeaves,
-    TintedLeaves,
+    TintedLeaves(ColorParticle),
     SculkSoul,
     SculkCharge(SculkChargeParticle),
     SculkChargePop,
     SoulFireFlame,
     Soul,
-    Flash,
+    Flash(ColorParticle),
     HappyVillager,
     Composter,
     Heart,
-    InstantEffect,
+    InstantEffect(SpellParticle),
     Item(ItemParticle),
     Vibration(Box<VibrationParticle>),
     Trail(Box<TrailParticle>),
@@ -129,11 +133,11 @@ pub enum Particle {
     TrialSpawnerDetection,
     TrialSpawnerDetectionOminous,
     VaultConnection,
-    DustPillar,
+    DustPillar(BlockParticle),
     OminousSpawning,
     RaidOmen,
     TrialOmen,
-    BlockCrumble,
+    BlockCrumble(BlockParticle),
     Firefly,
     SulfurCubeGoo,
 }
@@ -154,7 +158,7 @@ impl From<ParticleKind> for Particle {
             ParticleKind::Cloud => Self::Cloud,
             ParticleKind::Crit => Self::Crit,
             ParticleKind::DamageIndicator => Self::DamageIndicator,
-            ParticleKind::DragonBreath => Self::DragonBreath,
+            ParticleKind::DragonBreath => Self::DragonBreath(PowerParticle::default()),
             ParticleKind::DrippingLava => Self::DrippingLava,
             ParticleKind::FallingLava => Self::FallingLava,
             ParticleKind::LandingLava => Self::LandingLava,
@@ -164,7 +168,7 @@ impl From<ParticleKind> for Particle {
             ParticleKind::DustColorTransition => {
                 Self::DustColorTransition(DustColorTransitionParticle::default())
             }
-            ParticleKind::Effect => Self::Effect,
+            ParticleKind::Effect => Self::Effect(SpellParticle::default()),
             ParticleKind::ElderGuardian => Self::ElderGuardian,
             ParticleKind::EnchantedHit => Self::EnchantedHit,
             ParticleKind::Enchant => Self::Enchant,
@@ -180,17 +184,17 @@ impl From<ParticleKind> for Particle {
             ParticleKind::Flame => Self::Flame,
             ParticleKind::CherryLeaves => Self::CherryLeaves,
             ParticleKind::PaleOakLeaves => Self::PaleOakLeaves,
-            ParticleKind::TintedLeaves => Self::TintedLeaves,
+            ParticleKind::TintedLeaves => Self::TintedLeaves(ColorParticle::default()),
             ParticleKind::SculkSoul => Self::SculkSoul,
             ParticleKind::SculkCharge => Self::SculkCharge(SculkChargeParticle::default()),
             ParticleKind::SculkChargePop => Self::SculkChargePop,
             ParticleKind::SoulFireFlame => Self::SoulFireFlame,
             ParticleKind::Soul => Self::Soul,
-            ParticleKind::Flash => Self::Flash,
+            ParticleKind::Flash => Self::Flash(ColorParticle::default()),
             ParticleKind::HappyVillager => Self::HappyVillager,
             ParticleKind::Composter => Self::Composter,
             ParticleKind::Heart => Self::Heart,
-            ParticleKind::InstantEffect => Self::InstantEffect,
+            ParticleKind::InstantEffect => Self::InstantEffect(SpellParticle::default()),
             ParticleKind::Item => Self::Item(ItemParticle::default()),
             ParticleKind::Vibration => Self::Vibration(Default::default()),
             ParticleKind::ItemSlime => Self::ItemSlime,
@@ -256,12 +260,12 @@ impl From<ParticleKind> for Particle {
             ParticleKind::TrialSpawnerDetection => Self::TrialSpawnerDetection,
             ParticleKind::TrialSpawnerDetectionOminous => Self::TrialSpawnerDetectionOminous,
             ParticleKind::VaultConnection => Self::VaultConnection,
-            ParticleKind::DustPillar => Self::DustPillar,
+            ParticleKind::DustPillar => Self::DustPillar(BlockParticle::default()),
             ParticleKind::OminousSpawning => Self::OminousSpawning,
             ParticleKind::RaidOmen => Self::RaidOmen,
             ParticleKind::TrialOmen => Self::TrialOmen,
-            ParticleKind::Trail => Self::Trail(Box::default()),
-            ParticleKind::BlockCrumble => Self::BlockCrumble,
+            ParticleKind::Trail => Self::Trail(Default::default()),
+            ParticleKind::BlockCrumble => Self::BlockCrumble(BlockParticle::default()),
             ParticleKind::Firefly => Self::Firefly,
             ParticleKind::CopperFireFlame => Self::CopperFireFlame,
             ParticleKind::PauseMobGrowth => Self::PauseMobGrowth,
@@ -309,6 +313,25 @@ pub struct ColorParticle {
 }
 
 #[derive(AzBuf, Clone, Debug, Default, PartialEq)]
+pub struct PowerParticle {
+    pub power: f32,
+}
+
+#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
+pub struct SpellParticle {
+    pub color: RgbColor,
+    pub power: f32,
+}
+
+#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
+pub struct TrailParticle {
+    pub target: Vec3,
+    pub color: RgbColor,
+    #[var]
+    pub duration: u32,
+}
+
+#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
 pub struct ItemParticle {
     pub item: ItemStack,
 }
@@ -334,16 +357,6 @@ impl Default for PositionSource {
         // bad default but hopefully it never gets used anyways
         Self::Block(BlockPos::default())
     }
-}
-
-/// A trail particle's options, as vanilla's `TrailParticleOption`. The color is
-/// ARGB.
-#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
-pub struct TrailParticle {
-    pub target: azalea_core::position::Vec3,
-    pub color: u32,
-    #[var]
-    pub duration: i32,
 }
 
 #[derive(AzBuf, Clone, Debug, Default, PartialEq)]
@@ -373,41 +386,32 @@ pub struct GeyserBaseParticle {
 mod tests {
     use std::io::Cursor;
 
-    use azalea_buf::{AzBuf, AzBufVar};
-    use azalea_registry::Registry;
+    use azalea_buf::AzBuf;
 
     use super::*;
 
     #[test]
-    fn trails_carry_their_options() {
-        // As 26.2 writes a trail: its type id, the target (three doubles), the
-        // colour (int), the duration (VarInt), then whatever follows in the
-        // packet.
-        let mut b = Vec::new();
-        ParticleKind::Trail
-            .to_u32()
-            .azalea_write_var(&mut b)
-            .unwrap();
-        for v in [10.5f64, 70., -4.25] {
-            b.extend(v.to_be_bytes());
-        }
-        b.extend(0xFF33_AA55u32.to_be_bytes());
-        40i32.azalea_write_var(&mut b).unwrap();
-        b.push(0xEE);
-        let mut cursor = Cursor::new(b.as_slice());
-        let particle = Particle::azalea_read(&mut cursor).unwrap();
-        let Particle::Trail(trail) = particle else {
-            panic!("{particle:?}")
-        };
-        assert_eq!(
-            (trail.target.x, trail.target.y, trail.target.z),
-            (10.5, 70., -4.25)
-        );
-        assert_eq!((trail.color, trail.duration), (0xFF33_AA55, 40));
-        assert_eq!(
-            cursor.position() as usize,
-            b.len() - 1,
-            "stops where the trail ends"
-        );
+    fn test_read_flash_color() {
+        // flash, then an ARGB int
+        let bytes = [49, 0xff, 0xff, 0xff, 0xff];
+        let mut buf = Cursor::new(bytes.as_slice());
+        let particle = Particle::azalea_read(&mut buf).unwrap();
+        assert!(matches!(particle, Particle::Flash(_)));
+        assert_eq!(buf.position() as usize, bytes.len());
+    }
+
+    #[test]
+    fn test_trail_roundtrip() {
+        let particle = Particle::Trail(Box::new(TrailParticle {
+            target: Vec3::new(1., -60., 2.),
+            color: RgbColor::new(255, 0, 0),
+            duration: 20,
+        }));
+        let mut bytes = Vec::new();
+        particle.azalea_write(&mut bytes).unwrap();
+        assert_eq!(bytes[0], 56);
+
+        let read = Particle::azalea_read(&mut Cursor::new(bytes.as_slice())).unwrap();
+        assert_eq!(read, particle);
     }
 }
