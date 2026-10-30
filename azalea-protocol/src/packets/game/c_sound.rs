@@ -28,6 +28,7 @@ pub enum SoundSource {
     Players = 7,
     Ambient = 8,
     Voice = 9,
+    Ui = 10,
 }
 
 #[cfg(test)]
@@ -54,5 +55,21 @@ mod tests {
         let mut buf = Vec::new();
         packet.write(&mut buf).unwrap();
         assert_eq!(buf, contents);
+    }
+
+    #[test]
+    fn ui_sounds_decode() {
+        // As 26.2 writes ClientboundSoundPacket: the sound holder (registry id 6 + 1), the
+        // source (UI = 10), x/y/z × 8, volume, pitch, seed.
+        let mut contents = vec![7, 10];
+        for v in [8i32, 520, -16] {
+            contents.extend(v.to_be_bytes());
+        }
+        contents.extend(0.25f32.to_be_bytes());
+        contents.extend(1f32.to_be_bytes());
+        contents.extend(42u64.to_be_bytes());
+        let packet = ClientboundSound::azalea_read(&mut Cursor::new(contents.as_slice())).unwrap();
+        assert_eq!(packet.source, crate::packets::game::c_sound::SoundSource::Ui);
+        assert_eq!((packet.x, packet.y, packet.z, packet.volume), (8, 520, -16, 0.25));
     }
 }
