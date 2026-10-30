@@ -26,7 +26,7 @@ impl AzBuf for NumberFormat {
         match kind {
             NumberFormatKind::Blank => Ok(NumberFormat::Blank),
             NumberFormatKind::Styled => Ok(NumberFormat::Styled {
-                style: simdnbt::owned::read(buf)?,
+                style: simdnbt::owned::read_unnamed(buf)?,
             }),
             NumberFormatKind::Fixed => Ok(NumberFormat::Fixed {
                 value: FormattedText::azalea_read(buf)?,
