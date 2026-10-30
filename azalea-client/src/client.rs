@@ -34,6 +34,7 @@ use crate::{
     mining,
     movement::LastSentLookDirection,
     player::retroactively_add_game_profile_component,
+    world_border::WorldBorder,
 };
 /// A bundle of components that's inserted right when we switch to the `login`
 /// state and stay present on our clients until we disconnect.
@@ -71,6 +72,7 @@ pub struct JoinedClientBundle {
     pub cookies: ServerCookies,
     pub last_seen_messages: LastSeenMessagesTracker,
     pub server_command_tree: ServerCommandTree,
+    pub world_border: WorldBorder,
 
     pub entity_id_index: EntityIdIndex,
 

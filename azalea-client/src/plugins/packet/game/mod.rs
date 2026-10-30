@@ -54,6 +54,7 @@ use crate::{
     },
     player::{GameProfileComponent, PlayerInfo},
     tick_counter::TicksConnected,
+    world_border::WorldBorder,
 };
 
 pub fn process_packet(ecs: &mut World, player: Entity, packet: &ClientboundGamePacket) {
@@ -819,6 +820,23 @@ impl GamePacketHandler<'_> {
 
     pub fn initialize_border(&mut self, p: &ClientboundInitializeBorder) {
         debug!("Got initialize border packet {p:?}");
+
+        self.with_world_border(|border| {
+            border.center_x = p.new_center_x;
+            border.center_z = p.new_center_z;
+            border.absolute_max_size = p.new_absolute_max_size as f64;
+            border.warning_blocks = p.warning_blocks;
+            border.warning_time = p.warning_time;
+            border.lerp_size_between(p.old_size, p.new_size, p.lerp_time);
+        });
+    }
+
+    fn with_world_border(&mut self, f: impl FnOnce(&mut WorldBorder)) {
+        as_system::<Query<&mut WorldBorder>>(self.ecs, |mut query| {
+            if let Ok(mut border) = query.get_mut(self.player) {
+                f(&mut border);
+            }
+        });
     }
 
     pub fn set_time(&mut self, _p: &ClientboundSetTime) {
@@ -1531,10 +1549,13 @@ impl GamePacketHandler<'_> {
                     new_world_name,
                 );
                 // update the local gamemode and metadata things
+                // the border belongs to the world we were in, and the server sends
+                // the new one's after a respawn
                 commands.entity(self.player).insert((
                     p.common.game_type,
                     PreviousGameMode(p.common.previous_game_type.into()),
                     entity_bundle,
+                    WorldBorder::default(),
                 ));
 
                 commands
@@ -1635,11 +1656,26 @@ impl GamePacketHandler<'_> {
 
     pub fn select_advancements_tab(&mut self, _p: &ClientboundSelectAdvancementsTab) {}
     pub fn set_action_bar_text(&mut self, _p: &ClientboundSetActionBarText) {}
-    pub fn set_border_center(&mut self, _p: &ClientboundSetBorderCenter) {}
-    pub fn set_border_lerp_size(&mut self, _p: &ClientboundSetBorderLerpSize) {}
-    pub fn set_border_size(&mut self, _p: &ClientboundSetBorderSize) {}
-    pub fn set_border_warning_delay(&mut self, _p: &ClientboundSetBorderWarningDelay) {}
-    pub fn set_border_warning_distance(&mut self, _p: &ClientboundSetBorderWarningDistance) {}
+    pub fn set_border_center(&mut self, p: &ClientboundSetBorderCenter) {
+        self.with_world_border(|border| {
+            border.center_x = p.new_center_x;
+            border.center_z = p.new_center_z;
+        });
+    }
+    pub fn set_border_lerp_size(&mut self, p: &ClientboundSetBorderLerpSize) {
+        self.with_world_border(|border| {
+            border.lerp_size_between(p.old_size, p.new_size, p.lerp_time);
+        });
+    }
+    pub fn set_border_size(&mut self, p: &ClientboundSetBorderSize) {
+        self.with_world_border(|border| border.set_size(p.size));
+    }
+    pub fn set_border_warning_delay(&mut self, p: &ClientboundSetBorderWarningDelay) {
+        self.with_world_border(|border| border.warning_time = p.warning_delay);
+    }
+    pub fn set_border_warning_distance(&mut self, p: &ClientboundSetBorderWarningDistance) {
+        self.with_world_border(|border| border.warning_blocks = p.warning_blocks);
+    }
     pub fn set_camera(&mut self, _p: &ClientboundSetCamera) {}
     pub fn set_display_objective(&mut self, _p: &ClientboundSetDisplayObjective) {}
     pub fn set_objective(&mut self, _p: &ClientboundSetObjective) {}

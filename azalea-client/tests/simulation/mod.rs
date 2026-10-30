@@ -28,3 +28,4 @@ mod set_health_before_login;
 mod teleport_movement;
 mod ticks_alive;
 mod update_attributes;
+mod world_border;
