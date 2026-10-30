@@ -22,6 +22,7 @@ pub struct Attributes {
     pub water_movement_efficiency: AttributeInstance,
     pub mining_efficiency: AttributeInstance,
     pub block_break_speed: AttributeInstance,
+    pub submerged_mining_speed: AttributeInstance,
 
     pub block_interaction_range: AttributeInstance,
     pub entity_interaction_range: AttributeInstance,
@@ -43,6 +44,7 @@ impl Attributes {
             Attribute::EntityInteractionRange => &mut self.entity_interaction_range,
             Attribute::StepHeight => &mut self.step_height,
             Attribute::BlockBreakSpeed => &mut self.block_break_speed,
+            Attribute::SubmergedMiningSpeed => &mut self.submerged_mining_speed,
             _ => return None,
         };
         Some(value)

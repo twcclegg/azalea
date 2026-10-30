@@ -1,4 +1,4 @@
-use azalea_block::{BlockBehavior, BlockTrait};
+use azalea_block::{BlockBehavior, BlockTrait, fluid_state::FluidKind};
 use azalea_inventory::{ItemStack, components::Tool};
 use azalea_registry::builtin::{BlockKind, MobEffect};
 
@@ -72,7 +72,7 @@ fn has_correct_tool_for_drops(block: &dyn BlockTrait, item: &ItemStack) -> bool 
 fn destroy_speed(
     block: BlockKind,
     tool: &ItemStack,
-    _fluid_on_eyes: &FluidOnEyes,
+    fluid_on_eyes: &FluidOnEyes,
     physics: &Physics,
     attributes: &Attributes,
     active_effects: &ActiveEffects,
@@ -100,13 +100,10 @@ fn destroy_speed(
 
     speed *= attributes.block_break_speed.calculate() as f32;
 
-    // TODO
-    // if **fluid_on_eyes == FluidKind::Water
-    //     && enchantments::get_enchant_level(registry::Enchantment::AquaAffinity,
-    // player_inventory)         == 0
-    // {
-    //     base_destroy_speed /= 5.;
-    // }
+    // aqua affinity raises this to 1
+    if **fluid_on_eyes == FluidKind::Water {
+        speed *= attributes.submerged_mining_speed.calculate() as f32;
+    }
 
     if !physics.on_ground {
         speed /= 5.;
