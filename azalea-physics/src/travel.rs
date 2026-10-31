@@ -113,6 +113,10 @@ pub fn travel_until_moved(
             stuck_speed_multipler: &mut stuck_speed_multipler,
         };
 
+        // LivingEntity.travel's baseGravity: decided on the velocity before the
+        // move.
+        let gravity = effective_gravity(ctx.physics.velocity.y, effects);
+
         if ctx.physics.is_in_water() || ctx.physics.is_in_lava() {
             // minecraft also checks for `this.isAffectedByFluids() &&
             // !this.canStandOnFluid(fluidAtBlock)` here but it doesn't matter
@@ -126,6 +130,11 @@ pub fn travel_until_moved(
             travel_fall_flying(&mut ctx, &mut travel_ctx, &mut fall_flying);
         } else {
             travel_in_air(&mut ctx, &mut travel_ctx);
+        }
+        if let TravelCtx::Air { gravity: g, .. } | TravelCtx::Fluid { gravity: g, .. } =
+            &mut *travel_ctx
+        {
+            *g = gravity;
         }
     }
 }
@@ -173,10 +182,13 @@ pub fn travel_post_move(
         };
         let world = world_lock.read();
 
-        let gravity = get_effective_gravity();
+        let gravity = match travel_ctx {
+            TravelCtx::Air { gravity, .. } | TravelCtx::Fluid { gravity, .. } => *gravity,
+            TravelCtx::FallFlying {} => get_effective_gravity(),
+        };
 
         match travel_ctx {
-            TravelCtx::Air { inertia } => {
+            TravelCtx::Air { inertia, .. } => {
                 if movement_result.horizontal_collision() || **jumping {
                     let block_at_feet: BlockKind = world
                         .chunks
@@ -226,6 +238,7 @@ pub fn travel_post_move(
                 moving_down,
                 y,
                 has_water_movement_speed,
+                ..
             } => {
                 let sprinting = *sprinting.unwrap_or(&Sprinting(false));
                 if let Some(water_movement_speed) = has_water_movement_speed {
@@ -312,7 +325,10 @@ fn travel_in_air(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx) {
 
     // this applies the current delta
     handle_relative_friction_and_calculate_movement(ctx, block_friction);
-    *travel_ctx = TravelCtx::Air { inertia };
+    *travel_ctx = TravelCtx::Air {
+        inertia,
+        gravity: get_effective_gravity(),
+    };
 }
 
 fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx, dolphins_grace: bool) {
@@ -351,6 +367,7 @@ fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx, dolphins_grace
             moving_down,
             y,
             has_water_movement_speed: Some(water_movement_speed),
+            gravity: get_effective_gravity(),
         };
     } else {
         move_relative(ctx.physics, ctx.direction, 0.02, acceleration);
@@ -360,6 +377,7 @@ fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx, dolphins_grace
             moving_down,
             y,
             has_water_movement_speed: None,
+            gravity: get_effective_gravity(),
         };
     }
 }
@@ -546,6 +564,17 @@ fn contains_any_liquid(world: &World, bounding_box: Aabb) -> bool {
 pub fn get_effective_gravity() -> f64 {
     // TODO: slow falling effect
     0.08
+}
+
+/// LivingEntity.getEffectiveGravity: a falling entity (velocity y <= 0) with
+/// slow falling falls at no more than 0.01.
+fn effective_gravity(velocity_y: f64, effects: Option<&ActiveEffects>) -> f64 {
+    let gravity = get_effective_gravity();
+    if velocity_y <= 0. && effects.is_some_and(|e| e.get(MobEffect::SlowFalling).is_some()) {
+        gravity.min(0.01)
+    } else {
+        gravity
+    }
 }
 
 pub fn fluid_jump_threshold() -> f64 {

@@ -265,11 +265,16 @@ pub struct StuckSpeedMultiplier {
 pub enum TravelCtx {
     Air {
         inertia: f32,
+        /// LivingEntity.travel's baseGravity, decided before the move (slow
+        /// falling depends on whether the entity was falling then).
+        gravity: f64,
     },
     Fluid {
         moving_down: bool,
         y: f64,
         has_water_movement_speed: Option<f32>,
+        /// As in [`TravelCtx::Air`].
+        gravity: f64,
     },
     FallFlying {},
 }
@@ -278,6 +283,8 @@ impl Default for TravelCtx {
     fn default() -> Self {
         TravelCtx::Air {
             inertia: BlockBehavior::default().friction,
+            // A living entity's usual gravity, for anything that never sets it.
+            gravity: 0.08,
         }
     }
 }
