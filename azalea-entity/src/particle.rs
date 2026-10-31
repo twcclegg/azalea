@@ -393,13 +393,14 @@ mod tests {
     use std::io::Cursor;
 
     use azalea_buf::AzBuf;
+    use azalea_registry::Registry;
 
     use super::*;
 
     #[test]
     fn test_read_flash_color() {
         // flash, then an ARGB int
-        let bytes = [49, 0xff, 0xff, 0xff, 0xff];
+        let bytes = [ParticleKind::Flash.to_u32() as u8, 0xff, 0xff, 0xff, 0xff];
         let mut buf = Cursor::new(bytes.as_slice());
         let particle = Particle::azalea_read(&mut buf).unwrap();
         assert!(matches!(particle, Particle::Flash(_)));
@@ -415,7 +416,7 @@ mod tests {
         }));
         let mut bytes = Vec::new();
         particle.azalea_write(&mut bytes).unwrap();
-        assert_eq!(bytes[0], 56);
+        assert_eq!(bytes[0] as u32, ParticleKind::Trail.to_u32());
 
         let read = Particle::azalea_read(&mut Cursor::new(bytes.as_slice())).unwrap();
         assert_eq!(read, particle);
