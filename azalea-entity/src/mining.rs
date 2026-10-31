@@ -45,7 +45,9 @@ pub fn get_mine_progress(
     (base_destroy_speed / destroy_time) / (divisor as f32)
 }
 
-fn has_correct_tool_for_drops(block: &dyn BlockTrait, item: &ItemStack) -> bool {
+/// Whether the block drops anything when broken with the item, as vanilla's
+/// `Player.hasCorrectToolForDrops`.
+pub fn has_correct_tool_for_drops(block: &dyn BlockTrait, item: &ItemStack) -> bool {
     if !block.behavior().requires_correct_tool_for_drops {
         return true;
     }
@@ -112,7 +114,11 @@ fn destroy_speed(
     speed
 }
 
-fn base_destroy_speed(block: BlockKind, item: &ItemStack) -> f32 {
+/// The item's mining speed for the block from its `tool` component, before
+/// enchantments, effects and attributes, as vanilla's
+/// `ItemStack.getDestroySpeed`: the first matching rule's speed, the tool's
+/// default mining speed if none match, or 1 for items that aren't tools.
+pub fn base_destroy_speed(block: BlockKind, item: &ItemStack) -> f32 {
     let tool = item.get_component::<Tool>();
     let Some(tool) = tool else { return 1. };
     for rule in &tool.rules {
