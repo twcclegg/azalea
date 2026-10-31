@@ -24,6 +24,7 @@ pub mod respawn;
 pub mod task_pool;
 pub mod tick_counter;
 pub mod tick_end;
+pub mod world_border;
 
 /// This plugin group will add all the default plugins necessary for Azalea to
 /// work.
@@ -59,7 +60,8 @@ impl PluginGroup for DefaultPlugins {
             .add(connection::ConnectionPlugin)
             .add(login::LoginPlugin)
             .add(join::JoinPlugin)
-            .add(cookies::CookiesPlugin);
+            .add(cookies::CookiesPlugin)
+            .add(world_border::WorldBorderPlugin);
         #[cfg(feature = "online-mode")]
         {
             group = group.add(chat_signing::ChatSigningPlugin);

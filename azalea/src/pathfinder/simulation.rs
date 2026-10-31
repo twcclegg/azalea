@@ -10,8 +10,8 @@ use azalea_core::{
     entity_id::MinecraftEntityId, game_type::GameMode, position::Vec3, tick::GameTick,
 };
 use azalea_entity::{
-    Attributes, LookDirection, Physics, Position, dimensions::EntityDimensions,
-    inventory::Inventory,
+    Attributes, GroundContact, LookDirection, MovementResult, Physics, Position,
+    dimensions::EntityDimensions, inventory::Inventory,
 };
 use azalea_registry::builtin::EntityKind;
 use azalea_world::{ChunkStorage, PartialWorld, World, WorldName, Worlds};
@@ -58,7 +58,8 @@ fn create_simulation_world(chunks: ChunkStorage) -> (App, Arc<RwLock<World>>) {
     }));
 
     let mut app = App::new();
-    // we don't use all the default azalea plugins because we don't need all of them
+    // we don't use all the default azalea plugins because we don't need all of
+    // them
     app.add_plugins((
         azalea_physics::PhysicsPlugin,
         azalea_entity::EntityPlugin,
@@ -175,6 +176,12 @@ impl Simulation {
     }
     pub fn physics(&self) -> Physics {
         self.component::<Physics>().clone()
+    }
+    pub fn ground_contact(&self) -> GroundContact {
+        self.component::<GroundContact>().clone()
+    }
+    pub fn movement_result(&self) -> MovementResult {
+        self.component::<MovementResult>().clone()
     }
     pub fn is_mining(&self) -> bool {
         // return true if the component is present and Some

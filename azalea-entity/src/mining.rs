@@ -1,8 +1,8 @@
-use azalea_block::{BlockBehavior, BlockTrait};
+use azalea_block::{BlockBehavior, BlockTrait, fluid_state::FluidKind};
 use azalea_inventory::{ItemStack, components::Tool};
 use azalea_registry::builtin::{BlockKind, MobEffect};
 
-use crate::{ActiveEffects, Attributes, FluidOnEyes, Physics};
+use crate::{ActiveEffects, Attributes, FluidOnEyes, GroundContact};
 
 /// How much progress is made towards mining the block per tick, as a
 /// percentage.
@@ -18,7 +18,7 @@ pub fn get_mine_progress(
     block: &dyn BlockTrait,
     held_item: &ItemStack,
     fluid_on_eyes: &FluidOnEyes,
-    physics: &Physics,
+    ground_contact: &GroundContact,
     attributes: &Attributes,
     active_effects: &ActiveEffects,
 ) -> f32 {
@@ -38,7 +38,7 @@ pub fn get_mine_progress(
         block.as_block_kind(),
         held_item,
         fluid_on_eyes,
-        physics,
+        ground_contact,
         attributes,
         active_effects,
     );
@@ -72,8 +72,8 @@ fn has_correct_tool_for_drops(block: &dyn BlockTrait, item: &ItemStack) -> bool 
 fn destroy_speed(
     block: BlockKind,
     tool: &ItemStack,
-    _fluid_on_eyes: &FluidOnEyes,
-    physics: &Physics,
+    fluid_on_eyes: &FluidOnEyes,
+    ground_contact: &GroundContact,
     attributes: &Attributes,
     active_effects: &ActiveEffects,
 ) -> f32 {
@@ -100,15 +100,12 @@ fn destroy_speed(
 
     speed *= attributes.block_break_speed.calculate() as f32;
 
-    // TODO
-    // if **fluid_on_eyes == FluidKind::Water
-    //     && enchantments::get_enchant_level(registry::Enchantment::AquaAffinity,
-    // player_inventory)         == 0
-    // {
-    //     base_destroy_speed /= 5.;
-    // }
+    // aqua affinity raises this to 1
+    if **fluid_on_eyes == FluidKind::Water {
+        speed *= attributes.submerged_mining_speed.calculate() as f32;
+    }
 
-    if !physics.on_ground {
+    if !ground_contact.on_ground() {
         speed /= 5.;
     }
 

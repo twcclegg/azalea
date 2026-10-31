@@ -8,7 +8,8 @@ use crate::pathfinder::{astar, costs::*, player_pos_to_block_pos, positions::Rel
 
 pub fn parkour_move(ctx: &mut MovesCtx, node: RelBlockPos) {
     if !ctx.world.is_block_solid(node.down(1)) {
-        // we can only parkour from solid blocks (not just standable blocks like slabs)
+        // we can only parkour from solid blocks (not just standable blocks like
+        // slabs)
         return;
     }
 
@@ -36,8 +37,8 @@ fn parkour_forward_1_move(ctx: &mut MovesCtx, pos: RelBlockPos) {
         } else if ctx.world.is_standable(pos + offset) {
             // forward
 
-            // no FALL_N_BLOCKS_COST[1] added here because we mostly don't have to wait for
-            // falling
+            // no FALL_N_BLOCKS_COST[1] added here because we mostly don't have
+            // to wait for falling
             0
         } else {
             continue;
@@ -91,7 +92,8 @@ fn parkour_forward_2_move(ctx: &mut MovesCtx, pos: RelBlockPos) {
         } else if ctx.world.is_standable(pos + offset) {
             0
         } else if ctx.world.is_standable(pos + offset.down(1)) {
-            // we mostly don't really wait for falling during parkour except here
+            // we mostly don't really wait for falling during parkour except
+            // here
             cost += FALL_N_BLOCKS_COST[2] / 2.;
             -1
         } else {
@@ -234,9 +236,10 @@ fn execute_parkour_move(mut ctx: ExecuteCtx) {
         ctx.look_at(target_center);
         trace!("looking at target_center");
 
-        // it's possible to hit our heads on a block when doing certain jumps (which
-        // resets our horizontal velocity), but we can avoid that by sneaking
-        if !ctx.physics.on_ground() && ctx.physics.velocity.y.abs() < 0.25 {
+        // it's possible to hit our heads on a block when doing certain jumps
+        // (which resets our horizontal velocity), but we can avoid that by
+        // sneaking
+        if !ctx.ground_contact.on_ground() && ctx.physics.velocity.y.abs() < 0.25 {
             let should_sneak = {
                 let world = ctx.world.read();
                 let pos_above = ctx.position.up(1.8 + 0.25);
@@ -270,7 +273,7 @@ pub fn parkour_is_reached(
     IsReachedCtx {
         position,
         target,
-        physics,
+        ground_contact,
         ..
     }: IsReachedCtx,
 ) -> bool {
@@ -280,5 +283,5 @@ pub fn parkour_is_reached(
     }
 
     // this is to make it handle things like slabs correctly
-    player_pos_to_block_pos(position) == target && physics.on_ground()
+    player_pos_to_block_pos(position) == target && ground_contact.on_ground()
 }

@@ -1,0 +1,66 @@
+name: Upstream watch
+
+# Opens (or updates) one issue when azalea-rs/azalea has commits this fork
+# doesn't, saying whether they merge or rebase cleanly. Report only: nothing is
+# merged or pushed.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
+env:
+  LABEL: upstream-sync
+
+jobs:
+  watch:
+    if: github.repository != 'azalea-rs/azalea'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch the fork's branches
+        run: git fetch --quiet --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Compare with upstream
+        id: compare
+        env:
+          REPORT: ${{ runner.temp }}/upstream-report.md
+        run: |
+          git config user.name "upstream-watch"
+          git config user.email "upstream-watch@users.noreply.github.com"
+          bash .github/scripts/upstream-watch.sh
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the issue
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPORT: ${{ runner.temp }}/upstream-report.md
+        run: |
+          gh label create "$LABEL" --color FBCA04 \
+            --description "New commits in azalea-rs/azalea" 2>/dev/null || true
+          number=$(gh issue list --label "$LABEL" --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue view "$number" --json body --jq .body > old-body.md
+            if ! diff -q -B -Z --strip-trailing-cr old-body.md "$REPORT" >/dev/null; then
+              gh issue edit "$number" --body-file "$REPORT"
+              gh issue comment "$number" --body "Updated: upstream moved again ($(date -u +%Y-%m-%d))."
+            fi
+          else
+            gh issue create --title "Upstream has new commits" \
+              --label "$LABEL" --body-file "$REPORT"
+          fi

@@ -250,6 +250,30 @@ impl AzBuf for ItemStack {
     }
 }
 
+/// Similar to [`ItemStack`], but for places where the item can't be missing.
+///
+/// The Minecraft implementation of `ItemStackSlotDisplay` expects the item
+/// before the count, and the count is always at least 1.
+///
+/// This can be converted into an [`ItemStackData`] with
+/// [`Self::into_item_stack`].
+#[derive(AzBuf, Clone, Debug, PartialEq)]
+pub struct NonEmptyItemStack {
+    pub kind: ItemKind,
+    #[var]
+    pub count: i32,
+    pub component_patch: DataComponentPatch,
+}
+impl NonEmptyItemStack {
+    pub fn into_item_stack(self) -> ItemStackData {
+        ItemStackData {
+            kind: self.kind,
+            count: self.count,
+            component_patch: self.component_patch,
+        }
+    }
+}
+
 impl From<ItemStackData> for ItemStack {
     fn from(item: ItemStackData) -> Self {
         if item.is_empty() {
@@ -316,8 +340,8 @@ impl DataComponentPatch {
     ) -> Option<&dyn components::EncodableDataComponent> {
         self.components.get(&kind).and_then(|c| {
             c.as_ref().map(|c| {
-                // SAFETY: we just got the component from the map, so it must be the correct
-                // kind
+                // SAFETY: we just got the component from the map, so it must be
+                // the correct kind
                 unsafe { c.as_kind(kind) }
             })
         })
@@ -367,8 +391,8 @@ impl DataComponentPatch {
     ) {
         let existing = self.components.insert(kind, value);
         if let Some(Some(mut existing)) = existing {
-            // SAFETY: we just got it from self.components, so it must already be the
-            // correct type
+            // SAFETY: we just got it from self.components, so it must already
+            // be the correct type
             unsafe { existing.drop_as(kind) };
         }
     }
@@ -433,7 +457,8 @@ impl AzBuf for DataComponentPatch {
                 kind.azalea_write(buf)?;
 
                 component_buf.clear();
-                // SAFETY: we got the component from the map and are passing in the same kind
+                // SAFETY: we got the component from the map and are passing in
+                // the same kind
                 unsafe { component.azalea_write_as(*kind, &mut component_buf) }?;
                 buf.write_all(&component_buf)?;
             }
@@ -482,8 +507,9 @@ impl PartialEq for DataComponentPatch {
                 let Some(other_component) = other_component else {
                     return false;
                 };
-                // SAFETY: we already checked that the kinds are the same, and we got the
-                // components from the map, so they must be the correct kinds
+                // SAFETY: we already checked that the kinds are the same, and
+                // we got the components from the map, so they
+                // must be the correct kinds
                 if !unsafe { component.eq_as(other_component, *kind) } {
                     return false;
                 }

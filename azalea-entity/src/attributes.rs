@@ -22,11 +22,15 @@ pub struct Attributes {
     pub water_movement_efficiency: AttributeInstance,
     pub mining_efficiency: AttributeInstance,
     pub block_break_speed: AttributeInstance,
+    pub submerged_mining_speed: AttributeInstance,
 
     pub block_interaction_range: AttributeInstance,
     pub entity_interaction_range: AttributeInstance,
 
     pub step_height: AttributeInstance,
+
+    pub bounciness: AttributeInstance,
+    pub air_drag: AttributeInstance,
 }
 
 impl Attributes {
@@ -43,6 +47,9 @@ impl Attributes {
             Attribute::EntityInteractionRange => &mut self.entity_interaction_range,
             Attribute::StepHeight => &mut self.step_height,
             Attribute::BlockBreakSpeed => &mut self.block_break_speed,
+            Attribute::SubmergedMiningSpeed => &mut self.submerged_mining_speed,
+            Attribute::Bounciness => &mut self.bounciness,
+            Attribute::AirDragModifier => &mut self.air_drag,
             _ => return None,
         };
         Some(value)
@@ -108,6 +115,21 @@ impl AttributeInstance {
     /// the previous modifier is present.
     pub fn remove(&mut self, id: &Identifier) -> Option<AttributeModifier> {
         self.modifiers_by_id.remove(id)
+    }
+
+    /// Returns the modifier with the given ID, if present.
+    pub fn get(&self, id: &Identifier) -> Option<&AttributeModifier> {
+        self.modifiers_by_id.get(id)
+    }
+
+    /// Iterates over every modifier on this attribute.
+    pub fn modifiers(&self) -> impl Iterator<Item = &AttributeModifier> {
+        self.modifiers_by_id.values()
+    }
+
+    /// Remove every modifier from this attribute.
+    pub fn clear_modifiers(&mut self) {
+        self.modifiers_by_id.clear();
     }
 }
 

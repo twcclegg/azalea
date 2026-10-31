@@ -1,6 +1,10 @@
 use azalea_block::BlockState;
 use azalea_buf::AzBuf;
-use azalea_core::{color::RgbColor, entity_id::MinecraftEntityId, position::BlockPos};
+use azalea_core::{
+    color::RgbColor,
+    entity_id::MinecraftEntityId,
+    position::{BlockPos, Vec3},
+};
 use azalea_inventory::ItemStack;
 use azalea_registry::builtin::ParticleKind;
 
@@ -26,7 +30,7 @@ pub enum Particle {
     CopperFireFlame,
     Crit,
     DamageIndicator,
-    DragonBreath,
+    DragonBreath(PowerParticle),
     DrippingLava,
     FallingLava,
     LandingLava,
@@ -34,7 +38,7 @@ pub enum Particle {
     FallingWater,
     Dust(DustParticle),
     DustColorTransition(DustColorTransitionParticle),
-    Effect,
+    Effect(SpellParticle),
     ElderGuardian,
     EnchantedHit,
     Enchant,
@@ -57,20 +61,20 @@ pub enum Particle {
     RedPoplarLeaves,
     OrangePoplarLeaves,
     YellowPoplarLeaves,
-    TintedLeaves,
+    TintedLeaves(ColorParticle),
     SculkSoul,
     SculkCharge(SculkChargeParticle),
     SculkChargePop,
     SoulFireFlame,
     Soul,
-    Flash,
+    Flash(ColorParticle),
     HappyVillager,
     Composter,
     Heart,
-    InstantEffect,
+    InstantEffect(SpellParticle),
     Item(ItemParticle),
     Vibration(Box<VibrationParticle>),
-    Trail,
+    Trail(Box<TrailParticle>),
     PauseMobGrowth,
     ResetMobGrowth,
     ItemSlime,
@@ -132,11 +136,11 @@ pub enum Particle {
     TrialSpawnerDetection,
     TrialSpawnerDetectionOminous,
     VaultConnection,
-    DustPillar,
+    DustPillar(BlockParticle),
     OminousSpawning,
     RaidOmen,
     TrialOmen,
-    BlockCrumble,
+    BlockCrumble(BlockParticle),
     Firefly,
     SulfurCubeGoo,
 }
@@ -147,8 +151,8 @@ impl From<ParticleKind> for Particle {
     /// If the particle has data attached (like block particles), then it's set
     /// to the default.
     fn from(kind: ParticleKind) -> Self {
-        // this is mostly just here so it fails to compile when a new particle is added
-        // to ParticleKind, since `Particle` has to be updated manually
+        // this is mostly just here so it fails to compile when a new particle
+        // is added to ParticleKind, since `Particle` has to be updated manually
         match kind {
             ParticleKind::AngryVillager => Self::AngryVillager,
             ParticleKind::Block => Self::Block(BlockParticle::default()),
@@ -157,7 +161,7 @@ impl From<ParticleKind> for Particle {
             ParticleKind::Cloud => Self::Cloud,
             ParticleKind::Crit => Self::Crit,
             ParticleKind::DamageIndicator => Self::DamageIndicator,
-            ParticleKind::DragonBreath => Self::DragonBreath,
+            ParticleKind::DragonBreath => Self::DragonBreath(PowerParticle::default()),
             ParticleKind::DrippingLava => Self::DrippingLava,
             ParticleKind::FallingLava => Self::FallingLava,
             ParticleKind::LandingLava => Self::LandingLava,
@@ -167,7 +171,7 @@ impl From<ParticleKind> for Particle {
             ParticleKind::DustColorTransition => {
                 Self::DustColorTransition(DustColorTransitionParticle::default())
             }
-            ParticleKind::Effect => Self::Effect,
+            ParticleKind::Effect => Self::Effect(SpellParticle::default()),
             ParticleKind::ElderGuardian => Self::ElderGuardian,
             ParticleKind::EnchantedHit => Self::EnchantedHit,
             ParticleKind::Enchant => Self::Enchant,
@@ -183,17 +187,17 @@ impl From<ParticleKind> for Particle {
             ParticleKind::Flame => Self::Flame,
             ParticleKind::CherryLeaves => Self::CherryLeaves,
             ParticleKind::PaleOakLeaves => Self::PaleOakLeaves,
-            ParticleKind::TintedLeaves => Self::TintedLeaves,
+            ParticleKind::TintedLeaves => Self::TintedLeaves(ColorParticle::default()),
             ParticleKind::SculkSoul => Self::SculkSoul,
             ParticleKind::SculkCharge => Self::SculkCharge(SculkChargeParticle::default()),
             ParticleKind::SculkChargePop => Self::SculkChargePop,
             ParticleKind::SoulFireFlame => Self::SoulFireFlame,
             ParticleKind::Soul => Self::Soul,
-            ParticleKind::Flash => Self::Flash,
+            ParticleKind::Flash => Self::Flash(ColorParticle::default()),
             ParticleKind::HappyVillager => Self::HappyVillager,
             ParticleKind::Composter => Self::Composter,
             ParticleKind::Heart => Self::Heart,
-            ParticleKind::InstantEffect => Self::InstantEffect,
+            ParticleKind::InstantEffect => Self::InstantEffect(SpellParticle::default()),
             ParticleKind::Item => Self::Item(ItemParticle::default()),
             ParticleKind::Vibration => Self::Vibration(Default::default()),
             ParticleKind::ItemSlime => Self::ItemSlime,
@@ -259,12 +263,12 @@ impl From<ParticleKind> for Particle {
             ParticleKind::TrialSpawnerDetection => Self::TrialSpawnerDetection,
             ParticleKind::TrialSpawnerDetectionOminous => Self::TrialSpawnerDetectionOminous,
             ParticleKind::VaultConnection => Self::VaultConnection,
-            ParticleKind::DustPillar => Self::DustPillar,
+            ParticleKind::DustPillar => Self::DustPillar(BlockParticle::default()),
             ParticleKind::OminousSpawning => Self::OminousSpawning,
             ParticleKind::RaidOmen => Self::RaidOmen,
             ParticleKind::TrialOmen => Self::TrialOmen,
-            ParticleKind::Trail => Self::Trail,
-            ParticleKind::BlockCrumble => Self::BlockCrumble,
+            ParticleKind::Trail => Self::Trail(Default::default()),
+            ParticleKind::BlockCrumble => Self::BlockCrumble(BlockParticle::default()),
             ParticleKind::Firefly => Self::Firefly,
             ParticleKind::CopperFireFlame => Self::CopperFireFlame,
             ParticleKind::PauseMobGrowth => Self::PauseMobGrowth,
@@ -312,6 +316,25 @@ pub struct DustColorTransitionParticle {
 #[derive(AzBuf, Clone, Debug, Default, PartialEq)]
 pub struct ColorParticle {
     pub color: RgbColor,
+}
+
+#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
+pub struct PowerParticle {
+    pub power: f32,
+}
+
+#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
+pub struct SpellParticle {
+    pub color: RgbColor,
+    pub power: f32,
+}
+
+#[derive(AzBuf, Clone, Debug, Default, PartialEq)]
+pub struct TrailParticle {
+    pub target: Vec3,
+    pub color: RgbColor,
+    #[var]
+    pub duration: u32,
 }
 
 #[derive(AzBuf, Clone, Debug, Default, PartialEq)]
@@ -363,4 +386,38 @@ pub struct GeyserParticle {
 pub struct GeyserBaseParticle {
     pub water_blocks: i32,
     pub burst_impulse_base: f32,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use azalea_buf::AzBuf;
+
+    use super::*;
+
+    #[test]
+    fn test_read_flash_color() {
+        // flash, then an ARGB int
+        let bytes = [49, 0xff, 0xff, 0xff, 0xff];
+        let mut buf = Cursor::new(bytes.as_slice());
+        let particle = Particle::azalea_read(&mut buf).unwrap();
+        assert!(matches!(particle, Particle::Flash(_)));
+        assert_eq!(buf.position() as usize, bytes.len());
+    }
+
+    #[test]
+    fn test_trail_roundtrip() {
+        let particle = Particle::Trail(Box::new(TrailParticle {
+            target: Vec3::new(1., -60., 2.),
+            color: RgbColor::new(255, 0, 0),
+            duration: 20,
+        }));
+        let mut bytes = Vec::new();
+        particle.azalea_write(&mut bytes).unwrap();
+        assert_eq!(bytes[0], 56);
+
+        let read = Particle::azalea_read(&mut Cursor::new(bytes.as_slice())).unwrap();
+        assert_eq!(read, particle);
+    }
 }

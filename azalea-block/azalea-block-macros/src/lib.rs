@@ -139,6 +139,7 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as MakeBlockStates);
 
     let mut properties_map = HashMap::new();
+
     for property in &input.properties {
         let property_value_type = get_property_value_type(&property.data);
         let property_variant_types = get_property_variant_types(&property.data);
@@ -149,6 +150,7 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
 
     let mut block_state_enum_variants = quote! {};
     let mut block_structs = quote! {};
+    let mut block_statics = quote! {};
 
     let mut from_state_to_block_match = quote! {};
     let mut from_kind_to_block_match = quote! {};
@@ -180,8 +182,8 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
 
         let mut properties_with_name: Vec<PropertyWithNameAndDefault> =
             Vec::with_capacity(block.properties_and_defaults.len());
-        // Used to determine the index of the property so we can optionally add a number
-        // to it
+        // Used to determine the index of the property so we can optionally add
+        // a number to it
         let mut previous_names: Vec<String> = Vec::new();
         for property in &block.properties_and_defaults {
             let index: Option<usize> = if block
@@ -264,6 +266,18 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
                 #block_name_pascal_case,
             });
             default_state_id = Some(state_id);
+
+            let static_name = Ident::new(
+                &format!("__BLOCK_STATE_{}_{}", block_struct_name, state_id).to_uppercase(),
+                proc_macro2::Span::call_site(),
+            );
+
+            block_statics.extend(quote! {
+                static #static_name: #block_struct_name = #block_struct_name {};
+            });
+
+            from_state_to_block_match.extend(quote! { &#static_name, });
+
             state_id += 1;
         }
         for combination in combinations_of(&block_properties_vec) {
@@ -280,7 +294,8 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
                 let variant = &combination[i];
                 let variant_ident = variant.ident.clone();
 
-                // property.default is a TokenStream, so we have to parse it like this
+                // property.default is a TokenStream, so we have to parse it
+                // like this
                 let property_default_ident = property
                     .default
                     .clone()
@@ -331,6 +346,19 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
                 default_state_id = Some(state_id);
             }
 
+            let static_name = Ident::new(
+                &format!("__BLOCK_STATE_{}_{}", block_struct_name, state_id).to_uppercase(),
+                proc_macro2::Span::call_site(),
+            );
+
+            block_statics.extend(quote! {
+                static #static_name: #block_struct_name = #block_struct_name {
+                    #from_block_to_state_combination_match_inner
+                };
+            });
+
+            from_state_to_block_match.extend(quote! { &#static_name, });
+
             state_id += 1;
         }
 
@@ -358,6 +386,7 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
         //     }
         // }
         let mut from_state_to_block_inner = quote! {};
+
         let mut division: BlockStateIntegerRepr = 1;
         for i in (0..properties_with_name.len()).rev() {
             let PropertyWithNameAndDefault {
@@ -372,7 +401,8 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
             let conversion_code = {
                 if &property_value_type.to_string() == "bool" {
                     assert_eq!(property_variants_count, 2);
-                    // this is not a mistake, it starts with true for some reason
+                    // this is not a mistake, it starts with true for some
+                    // reason
                     quote! {(b / #division) % #property_variants_count == 0}
                 } else {
                     quote! {properties::#property_struct_name_ident::from((b / #division) % #property_variants_count)}
@@ -397,8 +427,8 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
             let property_variants = &block_properties_vec[i];
             let property_variants_count = property_variants.len() as crate::BlockStateIntegerRepr;
             if &property_value_type.to_string() == "bool" {
-                // this is not a mistake, it starts with true for some reason, so invert it to
-                // make `true be 0`
+                // this is not a mistake, it starts with true for some reason,
+                // so invert it to make `true be 0`
                 as_block_state_inner.extend(
                     quote! { + (!self.#property_name_ident as BlockStateIntegerRepr) * #factor},
                 );
@@ -412,20 +442,6 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
         }
 
         let last_state_id = state_id - 1;
-        from_state_to_block_match.extend(if first_state_id == last_state_id {
-            quote! {
-                #first_state_id => {
-                    Box::new(#block_struct_name { #from_state_to_block_inner })
-                },
-            }
-        } else {
-            quote! {
-                #first_state_id..=#last_state_id => {
-                    let b = b - #first_state_id;
-                    Box::new(#block_struct_name { #from_state_to_block_inner })
-                },
-            }
-        });
 
         from_kind_to_block_match.extend(quote! {
             BlockKind::#block_name_pascal_case => Box::new(#block_struct_name::default()),
@@ -511,6 +527,9 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
 
         block_struct.extend(quote! {
             impl BlockTrait for #block_struct_name {
+                fn boxed(&self) -> Box<dyn BlockTrait>{
+                    Box::new(*self)
+                }
                 fn behavior(&self) -> BlockBehavior {
                     #block_behavior
                 }
@@ -523,6 +542,7 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
                 fn as_block_kind(&self) -> BlockKind {
                     BlockKind::#block_name_pascal_case
                 }
+
 
                 fn property_map(&self) -> std::collections::HashMap<&'static str, &'static str> {
                     let mut map = std::collections::HashMap::new();
@@ -559,6 +579,7 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
     }
 
     let last_state_id = state_id - 1;
+
     let mut generated = quote! {
         impl BlockState {
             /// The highest possible block state ID.
@@ -604,15 +625,27 @@ pub fn make_block_states(input: TokenStream) -> TokenStream {
 
             #block_structs
 
-            impl From<BlockState> for Box<dyn BlockTrait> {
+            #block_statics
+
+            static BLOCK_STATE_TABLE: &[&'static dyn BlockTrait; BlockState::MAX_STATE as usize + 1] = &[
+                #from_state_to_block_match
+            ];
+
+
+            /// Convert a [`BlockState`] to a [`&'static dyn BlockTrait`].
+            #[inline]
+            #[must_use]
+            pub const fn blockstate_to_blocktrait(state: BlockState) -> &'static dyn BlockTrait {
+                BLOCK_STATE_TABLE[state.id() as usize]
+            }
+
+            impl From<BlockState> for &'static dyn BlockTrait {
+                #[inline]
                 fn from(block_state: BlockState) -> Self {
-                    let b = block_state.id();
-                    match b {
-                        #from_state_to_block_match
-                        _ => panic!("Invalid block state: {}", b),
-                    }
+                    blockstate_to_blocktrait(block_state)
                 }
             }
+
             impl From<BlockKind> for Box<dyn BlockTrait> {
                 fn from(block: BlockKind) -> Self {
                     match block {

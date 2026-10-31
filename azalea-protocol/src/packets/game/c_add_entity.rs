@@ -36,8 +36,21 @@ impl ClientboundAddEntity {
     /// You must apply the metadata after inserting the bundle with
     /// [`Self::apply_metadata`].
     #[cfg(feature = "bevy_ecs")]
+    /// Make the components for the entity, with its position, velocity and look
+    /// direction from this packet, as vanilla's `Entity.recreateFromPacket`.
     pub fn as_entity_bundle(&self, world_name: WorldName) -> azalea_entity::EntityBundle {
-        azalea_entity::EntityBundle::new(self.uuid, self.position, self.entity_type, world_name)
+        let mut bundle = azalea_entity::EntityBundle::new(
+            self.uuid,
+            self.position,
+            self.entity_type,
+            world_name,
+        );
+        bundle.physics.velocity = self.movement.to_vec3();
+        bundle.direction = azalea_entity::LookDirection::new(
+            (self.y_rot as i32 * 360) as f32 / 256.,
+            (self.x_rot as i32 * 360) as f32 / 256.,
+        );
+        bundle
     }
 
     /// Apply the default metadata for the given entity.

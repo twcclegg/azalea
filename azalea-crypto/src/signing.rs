@@ -47,6 +47,10 @@ pub struct SignChatMessageOptions {
     /// The message that we're sending in chat.
     pub message: String,
 
+    /// The signatures of the messages we've seen, oldest first, as acknowledged
+    /// in the packet that this message is sent in.
+    pub last_seen_messages: Vec<MessageSignature>,
+
     pub private_key: RsaPrivateKey,
 }
 
@@ -80,9 +84,12 @@ pub fn sign_chat_message(opts: &SignChatMessageOptions) -> MessageSignature {
     data_to_sign.extend_from_slice(opts.message.as_bytes());
 
     // last seen messages length
-    0i32.azalea_write(&mut data_to_sign).unwrap();
+    let last_seen_len: i32 = opts.last_seen_messages.len().try_into().unwrap();
+    last_seen_len.azalea_write(&mut data_to_sign).unwrap();
     // signatures of last seen messages
-    // ... not implemented yet
+    for signature in &opts.last_seen_messages {
+        data_to_sign.extend_from_slice(&signature.bytes);
+    }
 
     let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(opts.private_key.clone());
     let mut rng = rand::rng();

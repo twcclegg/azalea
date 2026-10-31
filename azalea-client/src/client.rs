@@ -26,6 +26,7 @@ use crate::{
     attack,
     block_update::QueuedServerBlockUpdates,
     chunks::ChunkBatchInfo,
+    client_chat::{last_seen::LastSeenMessagesTracker, signed_commands::ServerCommandTree},
     connection::RawConnection,
     cookies::ServerCookies,
     interact::BlockStatePredictionHandler,
@@ -33,6 +34,7 @@ use crate::{
     mining,
     movement::LastSentLookDirection,
     player::retroactively_add_game_profile_component,
+    world_border::WorldBorder,
 };
 /// A bundle of components that's inserted right when we switch to the `login`
 /// state and stay present on our clients until we disconnect.
@@ -68,6 +70,9 @@ pub struct JoinedClientBundle {
     pub hunger: Hunger,
     pub experience: Experience,
     pub cookies: ServerCookies,
+    pub last_seen_messages: LastSeenMessagesTracker,
+    pub server_command_tree: ServerCommandTree,
+    pub world_border: WorldBorder,
 
     pub entity_id_index: EntityIdIndex,
 
@@ -138,8 +143,8 @@ pub fn start_ecs_runner(
         app.cleanup();
     }
 
-    // all resources should have been added by now so we can take the ecs from the
-    // app
+    // all resources should have been added by now so we can take the ecs from
+    // the app
     let ecs = Arc::new(RwLock::new(mem::take(app.world_mut())));
 
     let ecs_clone = ecs.clone();
@@ -168,8 +173,8 @@ async fn run_schedule_loop(
     let mut last_tick: Option<Instant> = None;
 
     // azalea runs the Update schedule at most 60 times per second to simulate
-    // framerate. unlike vanilla though, we also only handle packets during Updates
-    // due to everything running in ecs systems.
+    // framerate. unlike vanilla though, we also only handle packets during
+    // Updates due to everything running in ecs systems.
     const UPDATE_DURATION_TARGET: Duration = Duration::from_micros(1_000_000 / 60);
     // minecraft runs at 20 tps
     const GAME_TICK_DURATION_TARGET: Duration = Duration::from_micros(1_000_000 / 20);
@@ -197,7 +202,8 @@ async fn run_schedule_loop(
                 *last_tick += GAME_TICK_DURATION_TARGET;
 
                 // if we're more than 10 ticks behind, set last_tick to now.
-                // vanilla doesn't do it in exactly the same way but it shouldn't really matter
+                // vanilla doesn't do it in exactly the same way but it
+                // shouldn't really matter
                 if (now - *last_tick) > GAME_TICK_DURATION_TARGET * 10 {
                     warn!(
                         "GameTick is more than 10 ticks behind, skipping ticks so we don't have to burst too much"
@@ -212,10 +218,12 @@ async fn run_schedule_loop(
 
         ecs.clear_trackers();
         if let Some(exit) = should_exit(&mut ecs) {
-            // it's possible for references to the World to stay around, so we clear the ecs
+            // it's possible for references to the World to stay around, so we
+            // clear the ecs
             ecs.clear_all();
-            // ^ note that this also forcefully disconnects all of our bots without sending
-            // a disconnect packet (which is fine because we want to disconnect immediately)
+            // ^ note that this also forcefully disconnects all of our bots
+            // without sending a disconnect packet (which is fine
+            // because we want to disconnect immediately)
 
             return exit;
         }

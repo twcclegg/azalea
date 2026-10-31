@@ -1,10 +1,12 @@
 use azalea_buf::AzBuf;
 use azalea_registry::identifier::Identifier;
 use azalea_protocol_macros::ServerboundConfigPacket;
-use simdnbt::owned::Nbt;
 
+use crate::common::custom_click_payload::CustomClickPayload;
+
+/// A dialog button's custom action, or a custom click event.
 #[derive(AzBuf, Clone, Debug, PartialEq, ServerboundConfigPacket)]
 pub struct ServerboundCustomClickAction {
     pub id: Identifier,
-    pub payload: Nbt,
+    pub payload: CustomClickPayload,
 }

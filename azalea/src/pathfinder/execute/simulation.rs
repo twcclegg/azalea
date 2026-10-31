@@ -11,7 +11,10 @@ use azalea_client::{
     mining::{Mining, MiningSystems, StartMiningBlockEvent},
 };
 use azalea_core::{position::BlockPos, tick::GameTick};
-use azalea_entity::{Attributes, LookDirection, Physics, Position, inventory::Inventory};
+use azalea_entity::{
+    Attributes, GroundContact, LookDirection, MovementResult, Physics, Position,
+    inventory::Inventory,
+};
 use azalea_physics::PhysicsSystems;
 use bevy_app::{App, Plugin};
 use bevy_ecs::{prelude::*, system::SystemState};
@@ -107,6 +110,7 @@ pub fn tick_execute_path(
         &mut LookDirection,
         &Position,
         &Physics,
+        &GroundContact,
         &ClientMovementState,
         Option<&Mining>,
         &WorldHolder,
@@ -126,6 +130,7 @@ pub fn tick_execute_path(
         mut look_direction,
         position,
         physics,
+        ground_contact,
         physics_state,
         mining,
         world_holder,
@@ -138,8 +143,8 @@ pub fn tick_execute_path(
 
         if executing_path.ticks_since_last_node_reached == 1 {
             if let Some(SimulatingPathState::Simulated(s)) = simulating_path_state {
-                // only reset the state if we just reached the end of the simulation path (for
-                // performance)
+                // only reset the state if we just reached the end of the
+                // simulation path (for performance)
                 if s.target == executing_path.last_reached_node
                     // or if the current simulation target isn't in the path, reset too
                     || !executing_path
@@ -185,6 +190,7 @@ pub fn tick_execute_path(
                         position: **position,
                         start: executing_path.last_reached_node,
                         physics,
+                        ground_contact,
                         is_currently_mining: mining.is_some(),
                         can_mine: true,
                         world: world_holder.shared.clone(),
@@ -257,8 +263,8 @@ fn run_simulations(
 
     let mut sim = Simulation::new(world_holder.shared.read().chunks.clone(), player.clone());
 
-    // note that we can't skip more than 50 nodes without causing issues with the
-    // executing_path_limit in goto_listener
+    // note that we can't skip more than 50 nodes without causing issues with
+    // the executing_path_limit in goto_listener
     for nodes_ahead in [20, 15, 10, 5, 4, 3, 2, 1, 0] {
         if nodes_ahead + 1 >= executing_path.path.len() {
             // don't simulate to the last node since it has stricter checks
@@ -281,8 +287,8 @@ fn run_simulations(
                             continue;
                         }
 
-                        // this loop is left here in case you wanna try re-enabling walking, but
-                        // it doesn't seem that useful
+                        // this loop is left here in case you wanna try
+                        // re-enabling walking, but it doesn't seem that useful
                         for sprinting in [true] {
                             if !sprinting && nodes_ahead > 2 {
                                 continue;
@@ -354,8 +360,8 @@ fn run_one_simulation(
     let start = BlockPos::from(player.position);
     sim.reset(player);
 
-    // run an Update to initialize some things, including at least the Bot component
-    // (which is needed for jumping)
+    // run an Update to initialize some things, including at least the Bot
+    // component (which is needed for jumping)
     sim.run_update_schedule();
 
     let simulating_to_block = simulating_to.movement.target;
@@ -366,8 +372,10 @@ fn run_one_simulation(
     for ticks in 1..=timeout_ticks {
         let position = sim.position();
         let physics = sim.physics();
+        let ground_contact = &sim.ground_contact();
+        let movement = sim.movement_result();
 
-        if physics.horizontal_collision
+        if movement.horizontal_collision()
             || physics.is_in_lava()
             || (physics.velocity.y < -0.7 && !physics.is_in_water())
         {
@@ -380,6 +388,7 @@ fn run_one_simulation(
             start,
             position,
             physics: &physics,
+            ground_contact,
         }) {
             success = true;
             total_ticks = ticks;
@@ -434,13 +443,21 @@ fn run_one_simulation(
 
         let next_node = &executing_path.path[nodes_ahead + 1];
         for _ in 1..=30 {
-            // add ticks here so if we sort by ticks later it'll be more accurate
+            // add ticks here so if we sort by ticks later it'll be more
+            // accurate
             total_ticks += 1;
 
             {
                 let mut system_state = SystemState::<(
                     Commands,
-                    Query<(&Position, &Physics, Option<&Mining>, &Inventory)>,
+                    Query<(
+                        &Position,
+                        &Physics,
+                        &GroundContact,
+                        Option<&Mining>,
+                        &Inventory,
+                        &MovementResult,
+                    )>,
                     MessageWriter<LookAtEvent>,
                     MessageWriter<StartSprintEvent>,
                     MessageWriter<StartWalkEvent>,
@@ -457,9 +474,10 @@ fn run_one_simulation(
                     mut start_mining_events,
                 ) = system_state.get_mut(sim.app.world_mut()).unwrap();
 
-                let (position, physics, mining, inventory) = query.get(sim.entity).unwrap();
+                let (position, physics, ground_contact, mining, inventory, movement_result) =
+                    query.get(sim.entity).unwrap();
 
-                if physics.horizontal_collision {
+                if movement_result.horizontal_collision() {
                     // if the simulated move made us hit a wall then it's bad
                     break;
                 }
@@ -473,6 +491,7 @@ fn run_one_simulation(
                     start: simulating_to_block,
                     position: **position,
                     physics,
+                    ground_contact,
                     is_currently_mining: mining.is_some(),
                     // don't modify the world from the simulation
                     can_mine: false,
@@ -496,6 +515,7 @@ fn run_one_simulation(
                 start: simulating_to_block,
                 position: sim.position(),
                 physics: &sim.physics(),
+                ground_contact: &sim.ground_contact(),
             }) {
                 followup_success = true;
                 break;

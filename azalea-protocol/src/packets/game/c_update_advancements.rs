@@ -5,7 +5,7 @@ use std::{
 
 use azalea_buf::AzBuf;
 use azalea_chat::FormattedText;
-use azalea_inventory::ItemStack;
+use azalea_inventory::NonEmptyItemStack;
 use azalea_protocol_macros::ClientboundGamePacket;
 use azalea_registry::identifier::Identifier;
 use indexmap::IndexMap;
@@ -31,7 +31,7 @@ pub struct Advancement {
 pub struct DisplayInfo {
     pub title: FormattedText,
     pub description: FormattedText,
-    pub icon: ItemStack,
+    pub icon: NonEmptyItemStack,
     pub frame: FrameType,
     pub show_toast: bool,
     pub hidden: bool,
@@ -142,7 +142,11 @@ mod tests {
                         display: Some(Box::new(DisplayInfo {
                             title: FormattedText::from("title".to_owned()),
                             description: FormattedText::from("description".to_owned()),
-                            icon: ItemStack::Empty,
+                            icon: NonEmptyItemStack {
+                                kind: azalea_registry::builtin::ItemKind::Stone,
+                                count: 1,
+                                component_patch: Default::default(),
+                            },
                             frame: FrameType::Task,
                             show_toast: true,
                             hidden: false,
@@ -214,5 +218,28 @@ mod tests {
         let read_display = read_advancement.display.unwrap();
         assert_eq!(display.title, read_display.title);
         assert_eq!(display.description, read_display.description);
+    }
+}
+
+#[cfg(test)]
+mod template_tests {
+    use azalea_buf::AzBufVar;
+    use azalea_registry::Registry;
+
+    use super::*;
+
+    #[test]
+    fn display_icons_are_templates() {
+        // DisplayInfo as 26.2 writes it: title and description (NBT strings), the icon (item,
+        // count 1, empty patch), the frame (goal = 2), flags (toast), x, y.
+        let mut b = vec![8, 0, 2, b'H', b'i', 8, 0, 3, b'Y', b'o', b'u'];
+        azalea_registry::builtin::ItemKind::GrassBlock.to_u32().azalea_write_var(&mut b).unwrap();
+        b.extend([1, 0, 0, 2]);
+        b.extend(2u32.to_be_bytes());
+        b.extend(1.5f32.to_be_bytes());
+        b.extend((-2f32).to_be_bytes());
+        let d = DisplayInfo::azalea_read(&mut Cursor::new(b.as_slice())).unwrap();
+        assert_eq!((d.icon.kind, d.icon.count, d.frame), (azalea_registry::builtin::ItemKind::GrassBlock, 1, FrameType::Goal));
+        assert_eq!((d.title.to_string().as_str(), d.show_toast, d.hidden, d.x, d.y), ("Hi", true, false, 1.5, -2.));
     }
 }

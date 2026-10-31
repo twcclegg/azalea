@@ -8,17 +8,20 @@ use azalea_core::{
     position::{ChunkPos, Vec3},
 };
 use azalea_entity::{
-    Dead, EntityBundle, EntityKindComponent, HasClientLoaded, LoadedBy, LocalEntity, LookDirection,
-    Physics, PlayerAbilities, Position,
+    Attributes, Dead, EntityBundle, EntityKindComponent, GroundContact, HasClientLoaded, LoadedBy,
+    LocalEntity, LookDirection, Physics, PlayerAbilities, Position,
+    attributes::sprinting_modifier,
     effect_events::{AddEffectEvent, RemoveEffectsEvent},
     indexing::{EntityIdIndex, EntityUuidIndex},
     inventory::Inventory,
     metadata::{Health, apply_metadata},
 };
+use azalea_physics::support::PositionUpdatedFromServer;
 use azalea_protocol::packets::{
     ConnectionProtocol,
     game::{
         c_move_entity_pos_rot::{CompactLookDirection, VecDelta},
+        c_player_chat::PackedMessageSignature,
         *,
     },
 };
@@ -32,7 +35,11 @@ use crate::{
     ClientInformation,
     block_update::QueuedServerBlockUpdates,
     chunks,
-    client_chat::{ChatPacket, ChatReceivedEvent},
+    client_chat::{
+        ChatPacket, ChatReceivedEvent,
+        last_seen::{LastSeenMessagesTracker, MAX_PENDING_MESSAGES},
+        signed_commands::ServerCommandTree,
+    },
     connection::RawConnection,
     cookies::{RequestCookieEvent, StoreCookieEvent},
     disconnect::DisconnectEvent,
@@ -46,6 +53,7 @@ use crate::{
     },
     player::{GameProfileComponent, PlayerInfo},
     tick_counter::TicksConnected,
+    world_border::WorldBorder,
 };
 
 pub fn process_packet(ecs: &mut World, player: Entity, packet: &ClientboundGamePacket) {
@@ -268,7 +276,8 @@ impl GamePacketHandler<'_> {
                         return;
                     };
 
-                    // add this world to the `worlds` (or don't, if it's already there)
+                    // add this world to the `worlds` (or don't, if it's already
+                    // there)
                     weak_world = worlds.get_or_insert(
                         new_world_name.clone(),
                         dimension_data.height,
@@ -282,8 +291,8 @@ impl GamePacketHandler<'_> {
                     });
                 }
 
-                // set the partial world to an empty world (when we add chunks or entities those
-                // will be in the `worlds`)
+                // set the partial world to an empty world (when we add chunks
+                // or entities those will be in the `worlds`)
 
                 *world_holder.partial.write() = PartialWorld::new(
                     azalea_world::chunk::calculate_chunk_storage_range(
@@ -348,8 +357,8 @@ impl GamePacketHandler<'_> {
     }
 
     pub fn chunk_batch_start(&mut self, _p: &ClientboundChunkBatchStart) {
-        // the packet is empty, it's just a marker to tell us when the batch starts and
-        // ends
+        // the packet is empty, it's just a marker to tell us when the batch
+        // starts and ends
         debug!("Got chunk batch start");
 
         as_system::<MessageWriter<_>>(self.ecs, |mut events| {
@@ -378,8 +387,17 @@ impl GamePacketHandler<'_> {
         debug!("Got difficulty packet {p:?}");
     }
 
-    pub fn commands(&mut self, _p: &ClientboundCommands) {
+    pub fn commands(&mut self, p: &ClientboundCommands) {
         debug!("Got declare commands packet");
+
+        as_system::<Query<&mut ServerCommandTree>>(self.ecs, |mut query| {
+            if let Ok(mut tree) = query.get_mut(self.player) {
+                *tree = ServerCommandTree {
+                    nodes: p.entries.clone(),
+                    root_index: p.root_index as usize,
+                };
+            }
+        });
     }
 
     pub fn player_abilities(&mut self, p: &ClientboundPlayerAbilities) {
@@ -594,13 +612,14 @@ impl GamePacketHandler<'_> {
                     return;
                 };
 
-                // check if the entity already exists, and if it does then only add to LoadedBy
+                // check if the entity already exists, and if it does then only
+                // add to LoadedBy
                 let world = worlds.get(world_name).unwrap();
                 if let Some(&ecs_entity) = world.read().entity_by_id.get(&entity_id) {
                     // entity already exists
                     let Ok(mut loaded_by) = loaded_by_query.get_mut(ecs_entity) else {
-                        // LoadedBy for this entity isn't in the ecs! figure out what went wrong
-                        // and print an error
+                        // LoadedBy for this entity isn't in the ecs! figure out
+                        // what went wrong and print an error
 
                         let entity_in_ecs = entity_query.get(ecs_entity).is_ok();
 
@@ -646,16 +665,16 @@ impl GamePacketHandler<'_> {
 
                 // add the GameProfileComponent if the uuid is in the tab list
                 if let Some(tab_list) = tab_list {
-                    // (technically this makes it possible for non-player entities to have
-                    // GameProfileComponents but the server would have to be doing something
-                    // really weird)
+                    // (technically this makes it possible for non-player
+                    // entities to have GameProfileComponents but the server
+                    // would have to be doing something really weird)
                     if let Some(player_info) = tab_list.get(&p.uuid) {
                         spawned.insert(GameProfileComponent(player_info.profile.clone()));
                     }
                 }
 
-                // the bundle doesn't include the default entity metadata so we add that
-                // separately
+                // the bundle doesn't include the default entity metadata so we
+                // add that separately
                 p.apply_metadata(&mut spawned);
             },
         );
@@ -695,8 +714,8 @@ impl GamePacketHandler<'_> {
 
             let packed_items = p.packed_items.clone().to_vec();
 
-            // we use RelativeEntityUpdate because it makes sure changes aren't made
-            // multiple times
+            // we use RelativeEntityUpdate because it makes sure changes aren't
+            // made multiple times
             commands.entity(entity).queue(RelativeEntityUpdate::new(
                 world_holder.partial.clone(),
                 move |entity| {
@@ -716,13 +735,51 @@ impl GamePacketHandler<'_> {
         });
     }
 
-    pub fn update_attributes(&mut self, _p: &ClientboundUpdateAttributes) {
-        // debug!("Got update attributes packet {p:?}");
+    pub fn update_attributes(&mut self, p: &ClientboundUpdateAttributes) {
+        as_system::<(
+            Query<&EntityIdIndex>,
+            Query<(&mut Attributes, Has<LocalEntity>)>,
+        )>(self.ecs, |(query, mut attributes_query)| {
+            let entity_id_index = query.get(self.player).unwrap();
+            let Some(entity) = entity_id_index.get_by_minecraft_entity(p.entity_id) else {
+                debug!(
+                    "Got update attributes packet for unknown entity id {}",
+                    p.entity_id
+                );
+                return;
+            };
+            let Ok((mut attributes, is_local)) = attributes_query.get_mut(entity) else {
+                return;
+            };
+
+            // like vanilla, each attribute sent replaces the base value and
+            // every modifier, except that our own sprinting modifier is kept as
+            // we predicted it, since the server's may be outdated
+            let sprinting_id = sprinting_modifier().id;
+            for snapshot in &p.values {
+                let Some(instance) = attributes.get_mut(snapshot.attribute) else {
+                    continue;
+                };
+                let sprinting = is_local
+                    .then(|| instance.get(&sprinting_id).cloned())
+                    .flatten();
+                instance.base = snapshot.base;
+                instance.clear_modifiers();
+                for modifier in &snapshot.modifiers {
+                    if !is_local || modifier.id != sprinting_id {
+                        instance.insert(modifier.clone());
+                    }
+                }
+                if let Some(sprinting) = sprinting {
+                    instance.insert(sprinting);
+                }
+            }
+        });
     }
 
     pub fn set_entity_motion(&mut self, p: &ClientboundSetEntityMotion) {
-        // vanilla servers use this packet for knockback, but note that the Explode
-        // packet is also sometimes used by servers for knockback
+        // vanilla servers use this packet for knockback, but note that the
+        // Explode packet is also sometimes used by servers for knockback
 
         as_system::<(
             Commands,
@@ -732,9 +789,10 @@ impl GamePacketHandler<'_> {
             let (entity_id_index, world_holder) = query.get(self.player).unwrap();
 
             let Some(entity) = entity_id_index.get_by_minecraft_entity(p.id) else {
-                // note that this log (and some other ones like the one in RemoveEntities)
-                // sometimes happens when killing mobs. it seems to be a vanilla bug, which is
-                // why it's a debug log instead of a warning
+                // note that this log (and some other ones like the one in
+                // RemoveEntities) sometimes happens when killing mobs. it seems
+                // to be a vanilla bug, which is why it's a debug log instead of
+                // a warning
                 debug!(
                     "Got set entity motion packet for unknown entity id {}",
                     p.id
@@ -744,8 +802,8 @@ impl GamePacketHandler<'_> {
 
             let data = KnockbackData::Set(p.delta.to_vec3());
 
-            // this is to make sure the same entity velocity update doesn't get sent
-            // multiple times when in swarms
+            // this is to make sure the same entity velocity update doesn't get
+            // sent multiple times when in swarms
             if should_apply_entity_update(
                 &mut commands,
                 &mut world_holder.partial.write(),
@@ -763,6 +821,23 @@ impl GamePacketHandler<'_> {
 
     pub fn initialize_border(&mut self, p: &ClientboundInitializeBorder) {
         debug!("Got initialize border packet {p:?}");
+
+        self.with_world_border(|border| {
+            border.center_x = p.new_center_x;
+            border.center_z = p.new_center_z;
+            border.absolute_max_size = p.new_absolute_max_size as f64;
+            border.warning_blocks = p.warning_blocks;
+            border.warning_time = p.warning_time;
+            border.lerp_size_between(p.old_size, p.new_size, p.lerp_time);
+        });
+    }
+
+    fn with_world_border(&mut self, f: impl FnOnce(&mut WorldBorder)) {
+        as_system::<Query<&mut WorldBorder>>(self.ecs, |mut query| {
+            if let Ok(mut border) = query.get_mut(self.player) {
+                f(&mut border);
+            }
+        });
     }
 
     pub fn set_time(&mut self, _p: &ClientboundSetTime) {
@@ -831,7 +906,8 @@ impl GamePacketHandler<'_> {
                                 &mut look_direction,
                                 &mut physics,
                             );
-                            // old_pos is set to the current position when we're teleported
+                            // old_pos is set to the current position when we're
+                            // teleported
                             physics.set_old_pos(old_position);
                         });
                     },
@@ -962,11 +1038,12 @@ impl GamePacketHandler<'_> {
                         continue;
                     };
 
-                    // the `remove_despawned_entities_from_indexes` system will despawn the entity
-                    // if it's not loaded by anything anymore
+                    // the `remove_despawned_entities_from_indexes` system will
+                    // despawn the entity if it's not loaded by anything anymore
 
-                    // also we can't just ecs.despawn because if we're in a swarm then the entity
-                    // might still be loaded by another client
+                    // also we can't just ecs.despawn because if we're in a
+                    // swarm then the entity might still be loaded by another
+                    // client
 
                     loaded_by.remove(&self.player);
                 }
@@ -976,7 +1053,24 @@ impl GamePacketHandler<'_> {
     pub fn player_chat(&mut self, p: &ClientboundPlayerChat) {
         debug!("Got player chat packet {p:?}");
 
-        as_system::<MessageWriter<_>>(self.ecs, |mut events| {
+        as_system::<(
+            Commands,
+            Query<&mut LastSeenMessagesTracker>,
+            MessageWriter<_>,
+        )>(self.ecs, |(mut commands, mut query, mut events)| {
+            // like vanilla's ClientPacketListener.markMessageAsProcessed
+            if let Some(signature) = &p.signature
+                && let Ok(mut last_seen) = query.get_mut(self.player)
+                && last_seen.add_pending(signature.clone())
+                && last_seen.offset() > MAX_PENDING_MESSAGES
+            {
+                let messages = last_seen.get_and_clear_offset();
+                commands.trigger(SendGamePacketEvent::new(
+                    self.player,
+                    ServerboundChatAck { messages },
+                ));
+            }
+
             events.write(ChatReceivedEvent {
                 entity: self.player,
                 packet: ChatPacket::Player(Arc::new(p.clone())),
@@ -1180,18 +1274,20 @@ impl GamePacketHandler<'_> {
                 }
             } else {
                 let is_creative_mode_and_inventory_closed = false;
-                // technically minecraft has slightly different behavior here if you're in
-                // creative mode and have your inventory open
+                // technically minecraft has slightly different behavior here if
+                // you're in creative mode and have your inventory open
                 if p.container_id == 0 && azalea_inventory::Player::is_hotbar_slot(p.slot.into()) {
-                    // minecraft also sets a "pop time" here which is used for an animation
-                    // but that's not really necessary
+                    // minecraft also sets a "pop time" here which is used for
+                    // an animation but that's not really
+                    // necessary
                     if let Some(slot) = inventory.inventory_menu.slot_mut(p.slot.into()) {
                         *slot = p.item_stack.clone();
                     }
                 } else if p.container_id == inventory.id
                     && (p.container_id != 0 || !is_creative_mode_and_inventory_closed)
                 {
-                    // var2.containerMenu.setItem(var4, var1.getStateId(), var3);
+                    // var2.containerMenu.setItem(var4, var1.getStateId(),
+                    // var3);
                     if let Some(slot) = inventory.menu_mut().slot_mut(p.slot.into()) {
                         *slot = p.item_stack.clone();
                         inventory.state_id = p.state_id;
@@ -1202,8 +1298,8 @@ impl GamePacketHandler<'_> {
     }
 
     pub fn container_close(&mut self, p: &ClientboundContainerClose) {
-        // there's a container_id field in the packet, but minecraft doesn't actually
-        // check it
+        // there's a container_id field in the packet, but minecraft doesn't
+        // actually check it
 
         debug!("Got container close packet {p:?}");
 
@@ -1218,7 +1314,18 @@ impl GamePacketHandler<'_> {
 
     pub fn custom_chat_completions(&mut self, _p: &ClientboundCustomChatCompletions) {}
 
-    pub fn delete_chat(&mut self, _p: &ClientboundDeleteChat) {}
+    pub fn delete_chat(&mut self, p: &ClientboundDeleteChat) {
+        // deletions that refer to a signature by its id in the server's
+        // signature cache can't be matched, since we don't keep that cache
+        let PackedMessageSignature::Signature(signature) = &p.signature else {
+            return;
+        };
+        as_system::<Query<&mut LastSeenMessagesTracker>>(self.ecs, |mut query| {
+            if let Ok(mut last_seen) = query.get_mut(self.player) {
+                last_seen.ignore_pending(signature);
+            }
+        });
+    }
 
     pub fn explode(&mut self, p: &ClientboundExplode) {
         debug!("Got explode packet {p:?}");
@@ -1404,7 +1511,8 @@ impl GamePacketHandler<'_> {
                         return;
                     };
 
-                    // add this world to the `worlds` (or don't if it's already there)
+                    // add this world to the `worlds` (or don't if it's already
+                    // there)
                     weak_world = worlds.get_or_insert(
                         new_world_name.clone(),
                         dimension_data.height,
@@ -1418,8 +1526,8 @@ impl GamePacketHandler<'_> {
                     });
                 }
 
-                // set the partial world to an empty world (when we add chunks or entities,
-                // those will be in the `worlds`)
+                // set the partial world to an empty world (when we add chunks
+                // or entities, those will be in the `worlds`)
 
                 *world_holder.partial.write() = PartialWorld::new(
                     azalea_world::chunk::calculate_chunk_storage_range(
@@ -1442,10 +1550,13 @@ impl GamePacketHandler<'_> {
                     new_world_name,
                 );
                 // update the local gamemode and metadata things
+                // the border belongs to the world we were in, and the server sends
+                // the new one's after a respawn
                 commands.entity(self.player).insert((
                     p.common.game_type,
                     PreviousGameMode(p.common.previous_game_type.into()),
                     entity_bundle,
+                    WorldBorder::default(),
                 ));
 
                 commands
@@ -1489,6 +1600,7 @@ impl GamePacketHandler<'_> {
             Query<(&EntityIdIndex, &WorldHolder)>,
             Query<(
                 &mut Physics,
+                &mut GroundContact,
                 &mut Position,
                 &mut LookDirection,
                 Option<&LocalEntity>,
@@ -1517,8 +1629,13 @@ impl GamePacketHandler<'_> {
                     return;
                 }
 
-                let Ok((mut physics, mut position, mut look_direction, local_entity)) =
-                    entity_query.get_mut(entity)
+                let Ok((
+                    mut physics,
+                    mut ground_contact,
+                    mut position,
+                    mut look_direction,
+                    local_entity,
+                )) = entity_query.get_mut(entity)
                 else {
                     return;
                 };
@@ -1531,8 +1648,6 @@ impl GamePacketHandler<'_> {
                     return;
                 }
 
-                physics.set_on_ground(new_on_ground);
-
                 if **position != new_position {
                     **position = new_position;
                 }
@@ -1540,17 +1655,35 @@ impl GamePacketHandler<'_> {
                 if *look_direction != new_look_direction {
                     *look_direction = new_look_direction;
                 }
+
+                ground_contact.set_on_ground(new_on_ground);
+                commands.entity(entity).insert(PositionUpdatedFromServer);
             },
         );
     }
 
     pub fn select_advancements_tab(&mut self, _p: &ClientboundSelectAdvancementsTab) {}
     pub fn set_action_bar_text(&mut self, _p: &ClientboundSetActionBarText) {}
-    pub fn set_border_center(&mut self, _p: &ClientboundSetBorderCenter) {}
-    pub fn set_border_lerp_size(&mut self, _p: &ClientboundSetBorderLerpSize) {}
-    pub fn set_border_size(&mut self, _p: &ClientboundSetBorderSize) {}
-    pub fn set_border_warning_delay(&mut self, _p: &ClientboundSetBorderWarningDelay) {}
-    pub fn set_border_warning_distance(&mut self, _p: &ClientboundSetBorderWarningDistance) {}
+    pub fn set_border_center(&mut self, p: &ClientboundSetBorderCenter) {
+        self.with_world_border(|border| {
+            border.center_x = p.new_center_x;
+            border.center_z = p.new_center_z;
+        });
+    }
+    pub fn set_border_lerp_size(&mut self, p: &ClientboundSetBorderLerpSize) {
+        self.with_world_border(|border| {
+            border.lerp_size_between(p.old_size, p.new_size, p.lerp_time);
+        });
+    }
+    pub fn set_border_size(&mut self, p: &ClientboundSetBorderSize) {
+        self.with_world_border(|border| border.set_size(p.size));
+    }
+    pub fn set_border_warning_delay(&mut self, p: &ClientboundSetBorderWarningDelay) {
+        self.with_world_border(|border| border.warning_time = p.warning_delay);
+    }
+    pub fn set_border_warning_distance(&mut self, p: &ClientboundSetBorderWarningDistance) {
+        self.with_world_border(|border| border.warning_blocks = p.warning_blocks);
+    }
     pub fn set_camera(&mut self, _p: &ClientboundSetCamera) {}
     pub fn set_display_objective(&mut self, _p: &ClientboundSetDisplayObjective) {}
     pub fn set_objective(&mut self, _p: &ClientboundSetObjective) {}
@@ -1669,8 +1802,16 @@ struct MoveEntity {
     pub on_ground: bool,
 }
 
-type MoveEntityQuery<'world, 'state, 'a> =
-    Query<'world, 'state, (&'a mut Physics, &'a mut Position, &'a mut LookDirection)>;
+type MoveEntityQuery<'world, 'state, 'a> = Query<
+    'world,
+    'state,
+    (
+        &'a mut Physics,
+        &'a mut GroundContact,
+        &'a mut Position,
+        &'a mut LookDirection,
+    ),
+>;
 
 fn move_entity(
     player_entity: Entity,
@@ -1691,7 +1832,9 @@ fn move_entity(
         return;
     };
 
-    let Ok((mut physics, mut position, mut look_direction)) = entity_query.get_mut(entity) else {
+    let Ok((mut physics, mut ground_contact, mut position, mut look_direction)) =
+        entity_query.get_mut(entity)
+    else {
         debug!("Got move entity packet for entity with missing components {entity_id}");
         return;
     };
@@ -1721,5 +1864,6 @@ fn move_entity(
         }
     }
 
-    physics.set_on_ground(p.on_ground);
+    ground_contact.set_on_ground(p.on_ground);
+    commands.entity(entity).insert(PositionUpdatedFromServer);
 }
