@@ -19,7 +19,7 @@ use azalea_core::{
 use azalea_entity::{
     ActiveEffects, Attributes, EntityGeometryUpdateSystems, EntityKindComponent, GroundContact,
     HasClientLoaded, Jumping, LocalEntity, LookDirection, MovementResult, OnClimbable, Physics,
-    Pose, Position, StuckSpeedMultiplier,
+    PlayerAbilities, Pose, Position, StuckSpeedMultiplier,
     dimensions::EntityDimensions,
     metadata::{AbstractLiving, Sprinting},
     move_relative, on_pos, on_pos_legacy,
@@ -726,6 +726,7 @@ fn handle_relative_friction_and_calculate_movement(ctx: &mut MoveCtx, block_fric
             ctx.attributes,
             block_friction,
             ctx.sprinting,
+            ctx.abilities,
         ),
         Vec3::new(
             ctx.physics.x_acceleration as f64,
@@ -788,14 +789,23 @@ fn get_friction_influenced_speed(
     attributes: &Attributes,
     friction: f32,
     sprinting: Sprinting,
+    abilities: Option<&PlayerAbilities>,
 ) -> f32 {
-    // TODO: have speed & flying_speed fields in entity
     if ground_contact.on_ground() {
         let speed = attributes.movement_speed.calculate() as f32;
         speed * (0.21600002f32 / (friction * friction * friction))
+    } else if let Some(abilities) = abilities.filter(|a| a.flying) {
+        // Player.getFlyingSpeed: the abilities' flying speed, doubled
+        // sprinting.
+        if *sprinting {
+            abilities.flying_speed * 2.
+        } else {
+            abilities.flying_speed
+        }
+    } else if *sprinting {
+        0.025999999f32
     } else {
-        // entity.flying_speed
-        if *sprinting { 0.025999999f32 } else { 0.02 }
+        0.02
     }
 }
 

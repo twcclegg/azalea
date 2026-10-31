@@ -116,6 +116,11 @@ pub fn travel_until_moved(
         // LivingEntity.travel's baseGravity: decided on the velocity before the
         // move.
         let gravity = effective_gravity(ctx.physics.velocity.y, effects);
+        // Player.travel: flying keeps the vertical velocity from before the
+        // travel.
+        let flying_y = abilities
+            .filter(|a| a.flying)
+            .map(|_| ctx.physics.velocity.y);
 
         if ctx.physics.is_in_water() || ctx.physics.is_in_lava() {
             // minecraft also checks for `this.isAffectedByFluids() &&
@@ -131,10 +136,19 @@ pub fn travel_until_moved(
         } else {
             travel_in_air(&mut ctx, &mut travel_ctx);
         }
-        if let TravelCtx::Air { gravity: g, .. } | TravelCtx::Fluid { gravity: g, .. } =
-            &mut *travel_ctx
+        if let TravelCtx::Air {
+            gravity: g,
+            flying_y: f,
+            ..
+        }
+        | TravelCtx::Fluid {
+            gravity: g,
+            flying_y: f,
+            ..
+        } = &mut *travel_ctx
         {
             *g = gravity;
+            *f = flying_y;
         }
     }
 }
@@ -298,6 +312,18 @@ pub fn travel_post_move(
                 // nothing post travel for elytra I think
             }
         }
+
+        // Player.travel: while flying, the vertical velocity after the travel
+        // is the one from before it × 0.6 (no gravity, easing to a stop).
+        if let TravelCtx::Air {
+            flying_y: Some(y), ..
+        }
+        | TravelCtx::Fluid {
+            flying_y: Some(y), ..
+        } = travel_ctx
+        {
+            physics.velocity.y = y * 0.6;
+        }
     }
 }
 
@@ -328,6 +354,7 @@ fn travel_in_air(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx) {
     *travel_ctx = TravelCtx::Air {
         inertia,
         gravity: get_effective_gravity(),
+        flying_y: None,
     };
 }
 
@@ -368,6 +395,7 @@ fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx, dolphins_grace
             y,
             has_water_movement_speed: Some(water_movement_speed),
             gravity: get_effective_gravity(),
+            flying_y: None,
         };
     } else {
         move_relative(ctx.physics, ctx.direction, 0.02, acceleration);
@@ -378,6 +406,7 @@ fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx, dolphins_grace
             y,
             has_water_movement_speed: None,
             gravity: get_effective_gravity(),
+            flying_y: None,
         };
     }
 }
