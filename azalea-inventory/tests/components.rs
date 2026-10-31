@@ -13,7 +13,7 @@ use azalea_inventory::{
     components::{
         AdventureModePredicate, AttributeModifier, AttributeModifierDisplay, AttributeModifiers,
         AttributeModifiersEntry, BlockPredicate, CanPlaceOn, ChargedProjectiles, CustomData,
-        CustomName, EquipmentSlotGroup, Glider, JukeboxPlayable, LodestoneTracker, Lore, MapColor,
+        CustomName, EquipmentSlotGroup, Glider, JukeboxPlayable, LodestoneTracker, Lore,
         PotDecorations, Rarity,
     },
 };
@@ -40,11 +40,6 @@ fn test_custom_name_checksum_2() {
     };
 
     assert_eq!(get_checksum(&c, &Default::default()).unwrap().0, 187682122);
-}
-#[test]
-fn test_map_color_checksum() {
-    let c = MapColor { color: 1 };
-    assert_eq!(get_checksum(&c, &Default::default()).unwrap().0, 1565579036);
 }
 #[test]
 fn test_lore_checksum() {
