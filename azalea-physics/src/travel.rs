@@ -6,7 +6,7 @@ use azalea_core::{
 use azalea_entity::{
     Attributes, GroundContact, HasClientLoaded, Jumping, LocalEntity, LookDirection,
     MovementResult, OnClimbable, Physics, PlayerAbilities, Pose, Position, StuckSpeedMultiplier,
-    TravelCtx,
+    TravelCtx, is_on_climbable,
     metadata::{FallFlying, Sprinting},
     move_relative, view_vector,
 };
@@ -134,7 +134,6 @@ pub fn travel_post_move(
             (
                 Entity,
                 &WorldName,
-                &OnClimbable,
                 &Jumping,
                 &TravelCtx,
                 &MovementResult,
@@ -154,7 +153,6 @@ pub fn travel_post_move(
         (
             entity,
             world_name,
-            on_climbable,
             jumping,
             travel_ctx,
             movement_result,
@@ -181,7 +179,11 @@ pub fn travel_post_move(
                         .unwrap_or_default()
                         .into();
 
-                    if **on_climbable || block_at_feet == BlockKind::PowderSnow {
+                    // Climbing is checked where the move left the entity, as
+                    // vanilla's onClimbable() is, not where the tick began.
+                    if is_on_climbable(&world, BlockPos::from(position))
+                        || block_at_feet == BlockKind::PowderSnow
+                    {
                         physics.velocity.y = 0.2;
                     }
                 }
@@ -216,7 +218,9 @@ pub fn travel_post_move(
                 let sprinting = *sprinting.unwrap_or(&Sprinting(false));
                 if let Some(water_movement_speed) = has_water_movement_speed {
                     let mut new_velocity = physics.velocity;
-                    if movement_result.horizontal_collision() && **on_climbable {
+                    if movement_result.horizontal_collision()
+                        && is_on_climbable(&world, BlockPos::from(position))
+                    {
                         // underwater ladders
                         new_velocity.y = 0.2;
                     }
