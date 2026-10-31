@@ -363,11 +363,7 @@ pub fn bounce_on_block(
 
                 (
                     portion_with_movement * get_effective_gravity(),
-                    azalea_core::math::lerp(
-                        portion_with_movement,
-                        1.0,
-                        attributes.air_drag.calculate(),
-                    ),
+                    azalea_core::math::lerp(portion_with_movement, 1.0, air_drag(attributes)),
                 )
             } else {
                 (0.0, 1.0)
@@ -632,6 +628,16 @@ fn handle_entity_inside_block(
         }
         _ => {}
     }
+}
+
+/// LivingEntity.getAirDrag for an entity that isn't an omnidirectional air
+/// mover (players aren't; bees, parrots and sulfur cubes are):
+/// computeModifiedFriction of the vertical air drag, 0.98, by the
+/// air_drag_modifier attribute. The attribute is a modifier of the drag, not
+/// the drag itself.
+fn air_drag(attributes: &Attributes) -> f64 {
+    let modifier = attributes.air_drag.calculate() as f32;
+    f64::from((1. - (1. - 0.98f32) * modifier).clamp(0., 1.))
 }
 
 // can't imagine that's the only block that currently has client side effect
