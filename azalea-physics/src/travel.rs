@@ -142,6 +142,7 @@ pub fn travel_post_move(
                 &MovementResult,
                 &Position,
                 Option<&Sprinting>,
+                Option<&ActiveEffects>,
                 &mut Physics,
             ),
             (),
@@ -161,6 +162,7 @@ pub fn travel_post_move(
             movement_result,
             position,
             sprinting,
+            effects,
             mut physics,
         ),
         (),
@@ -193,7 +195,13 @@ pub fn travel_post_move(
 
                 let mut movement = physics.velocity;
 
-                movement.y -= gravity;
+                // Levitation eases the entity up towards 0.05 per level instead
+                // of letting it fall (LivingEntity.travelInAir).
+                if let Some(level) = effects.and_then(|e| e.get_level(MobEffect::Levitation)) {
+                    movement.y += (0.05 * f64::from(level + 1) - movement.y) * 0.2;
+                } else {
+                    movement.y -= gravity;
+                }
 
                 // if (this.shouldDiscardFriction()) {
                 //     this.setDeltaMovement(movement.x, yMovement, movement.z);
