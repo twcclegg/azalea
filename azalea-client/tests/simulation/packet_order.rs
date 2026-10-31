@@ -7,7 +7,7 @@ use azalea_protocol::{
         ConnectionProtocol,
         game::{
             ClientboundBlockUpdate, ClientboundPlayerPosition, ServerboundAcceptTeleportation,
-            ServerboundGamePacket, ServerboundMovePlayerPosRot, ServerboundMovePlayerStatusOnly,
+            ServerboundGamePacket, ServerboundMovePlayerStatusOnly,
         },
     },
 };
@@ -46,23 +46,16 @@ fn test_packet_order() {
         simulation.get_block_state(BlockPos::new(1, 1, 3)),
         Some(BlockKind::Stone.into())
     );
+    // in 26.3 the teleport is accepted with the new position, and there's no
+    // separate MovePlayerPosRot
     sent_packets.expect("AcceptTeleportation", |p| {
         matches!(
             p,
-            ServerboundGamePacket::AcceptTeleportation(ServerboundAcceptTeleportation { id: 1 })
-        )
-    });
-    sent_packets.expect("MovePlayerPosRot", |p| {
-        matches!(
-            p,
-            ServerboundGamePacket::MovePlayerPosRot(p)
-            if p == &ServerboundMovePlayerPosRot {
-                flags: MoveFlags {
-                    on_ground: false,
-                    horizontal_collision: false
-                },
-                pos: Vec3::new(1.5, 2., 3.5),
-                look_direction: LookDirection::default(),
+            ServerboundGamePacket::AcceptTeleportation(p)
+            if p == &ServerboundAcceptTeleportation {
+                id: 1,
+                position: Vec3::new(1.5, 2., 3.5),
+                direction: LookDirection::default(),
             }
         )
     });

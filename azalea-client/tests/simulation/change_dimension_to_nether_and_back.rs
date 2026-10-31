@@ -39,24 +39,24 @@ fn generic_test_change_dimension_to_nether_and_back(using_respawn: bool) {
                 // this dimension should never be created. it just exists to make sure we're not
                 // hard-coding the dimension type id anywhere.
                 Identifier::new("azalea:fakedimension"),
-                Some(NbtCompound::from_values(vec![
+                Some(NbtTag::Compound(NbtCompound::from_values(vec![
                     ("height".into(), NbtTag::Int(16)),
                     ("min_y".into(), NbtTag::Int(0)),
-                ])),
+                ]))),
             ),
             (
                 Identifier::new("minecraft:overworld"),
-                Some(NbtCompound::from_values(vec![
+                Some(NbtTag::Compound(NbtCompound::from_values(vec![
                     ("height".into(), NbtTag::Int(384)),
                     ("min_y".into(), NbtTag::Int(-64)),
-                ])),
+                ]))),
             ),
             (
                 Identifier::new("minecraft:nether"),
-                Some(NbtCompound::from_values(vec![
+                Some(NbtTag::Compound(NbtCompound::from_values(vec![
                     ("height".into(), NbtTag::Int(256)),
                     ("min_y".into(), NbtTag::Int(0)),
-                ])),
+                ]))),
             ),
         ]
         .into_iter()

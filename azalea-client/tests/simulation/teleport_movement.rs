@@ -12,7 +12,7 @@ use azalea_protocol::{
         game::{
             ClientboundBlockUpdate, ClientboundForgetLevelChunk, ClientboundPing,
             ClientboundPlayerPosition, ClientboundSetChunkCacheCenter, ClientboundSetEntityMotion,
-            ServerboundGamePacket, ServerboundMovePlayerPos, ServerboundMovePlayerPosRot,
+            ServerboundGamePacket, ServerboundMovePlayerPos,
         },
     },
 };
@@ -70,17 +70,10 @@ fn test_teleport_movement() {
     simulation.tick();
     sent_packets.expect_pong(1);
     sent_packets.expect("AcceptTeleportation", |p| {
-        matches!(p, ServerboundGamePacket::AcceptTeleportation(_))
-    });
-    sent_packets.expect("MovePlayerPosRot", |p| {
         matches!(
             p,
-            ServerboundGamePacket::MovePlayerPosRot(p)
-            if p == &ServerboundMovePlayerPosRot {
-                pos: Vec3::new(10000.5, 70.0, 0.5),
-                flags: MoveFlags::default(),
-                look_direction: LookDirection::default(),
-            }
+            ServerboundGamePacket::AcceptTeleportation(p)
+            if p.position == Vec3::new(10000.5, 70.0, 0.5) && p.direction == LookDirection::default()
         )
     });
     sent_packets.expect_pong(2);
@@ -128,17 +121,11 @@ fn test_teleport_movement() {
 
     sent_packets.expect_pong(3);
     sent_packets.expect("AcceptTeleportation", |p| {
-        matches!(p, ServerboundGamePacket::AcceptTeleportation(_))
-    });
-    sent_packets.expect("MovePlayerPosRot", |p| {
         matches!(
-        p,
-        ServerboundGamePacket::MovePlayerPosRot(p)
-        if p == &ServerboundMovePlayerPosRot {
-            pos: Vec3::new(10000.5, 70.0000001, 0.5),
-            flags: MoveFlags::default(),
-            look_direction: LookDirection::default(),
-        })
+            p,
+            ServerboundGamePacket::AcceptTeleportation(p)
+            if p.position == Vec3::new(10000.5, 70.0000001, 0.5) && p.direction == LookDirection::default()
+        )
     });
     sent_packets.expect_pong(4);
     sent_packets.expect_pong(5);
