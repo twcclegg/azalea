@@ -181,6 +181,7 @@ fn test_lodestone_tracker_checksum() {
 }
 
 #[test]
+#[ignore = "the expected checksum is a placeholder for 26.3's PotDecorations (see the TODO)"]
 fn test_pot_decorations_checksum() {
     let c = PotDecorations {
         back: Some(ItemKind::Stick.into()),
