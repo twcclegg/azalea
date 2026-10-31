@@ -880,6 +880,13 @@ pub fn update_falling_distance(
             block_state_below,
             block_pos_below,
         );
+
+        // LivingEntity.checkFallDamage updates the fluids the entity is in
+        // after the move, unless it's in water: travelInLava's shallow-lava
+        // check then sees where the move left it.
+        if !physics.is_in_water() {
+            fluids::update_fluid_interaction(&mut physics, &world, world_name, *position);
+        }
     }
 }
 
