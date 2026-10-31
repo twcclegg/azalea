@@ -485,7 +485,7 @@ impl Attributes {
 ///
 /// This should only be present on local players.
 #[cfg_attr(feature = "bevy_ecs", derive(bevy_ecs::component::Component))]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct PlayerAbilities {
     pub invulnerable: bool,
     pub flying: bool,
@@ -497,6 +497,20 @@ pub struct PlayerAbilities {
     pub flying_speed: f32,
     /// Used for the fov
     pub walking_speed: f32,
+}
+
+impl Default for PlayerAbilities {
+    /// Vanilla's default abilities, before the server sends any.
+    fn default() -> Self {
+        Self {
+            invulnerable: false,
+            flying: false,
+            can_fly: false,
+            instant_break: false,
+            flying_speed: 0.05,
+            walking_speed: 0.1,
+        }
+    }
 }
 
 /// The type of fluid that is at an entity's eye position, while also accounting
