@@ -643,7 +643,7 @@ fn handle_entity_step_on(
 ) {
     if BlockKind::SlimeBlock == block {
         let y_absolute = physics.velocity.y.abs();
-        if y_absolute > 0.1 && !client_movement.trying_to_crouch {
+        if y_absolute < 0.1 && !client_movement.trying_to_crouch {
             let scale = 0.4 + y_absolute * 0.2;
             physics.velocity.x *= scale;
             physics.velocity.z *= scale;
