@@ -161,14 +161,20 @@ pub fn update_on_climbable(
 
         let world = world.read();
 
-        let block_pos = BlockPos::from(position);
-        let block_at_feet = world.get_block_state(block_pos).unwrap_or_default();
-        let registry_block_at_feet = block_at_feet.as_block_kind();
-
-        **on_climbable = tags::blocks::CLIMBABLE.contains(&registry_block_at_feet)
-            || (tags::blocks::TRAPDOORS.contains(&registry_block_at_feet)
-                && is_trapdoor_usable_as_ladder(block_at_feet, block_pos, &world));
+        **on_climbable = is_on_climbable(&world, BlockPos::from(position));
     }
+}
+
+/// Whether an entity whose feet are in `block_pos` is on something it can climb
+/// (LivingEntity.onClimbable, without the spectator check): a block in the
+/// climbable tag, or a trapdoor that works as a ladder.
+pub fn is_on_climbable(world: &azalea_world::World, block_pos: BlockPos) -> bool {
+    let block_at_feet = world.get_block_state(block_pos).unwrap_or_default();
+    let registry_block_at_feet = block_at_feet.as_block_kind();
+
+    tags::blocks::CLIMBABLE.contains(&registry_block_at_feet)
+        || (tags::blocks::TRAPDOORS.contains(&registry_block_at_feet)
+            && is_trapdoor_usable_as_ladder(block_at_feet, block_pos, world))
 }
 
 #[expect(clippy::needless_bool, reason = "Kept for future improvements")]
