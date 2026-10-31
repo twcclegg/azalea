@@ -36,8 +36,6 @@ pub struct DisplayInfo {
     pub show_toast: bool,
     pub hidden: bool,
     pub background: Option<Identifier>,
-    pub x: f32,
-    pub y: f32,
 }
 
 impl AzBuf for DisplayInfo {
@@ -57,8 +55,6 @@ impl AzBuf for DisplayInfo {
         } else {
             None
         };
-        let x = AzBuf::azalea_read(buf)?;
-        let y = AzBuf::azalea_read(buf)?;
         Ok(DisplayInfo {
             title,
             description,
@@ -67,8 +63,6 @@ impl AzBuf for DisplayInfo {
             show_toast,
             hidden,
             background,
-            x,
-            y,
         })
     }
     fn azalea_write(&self, buf: &mut impl Write) -> io::Result<()> {
@@ -92,8 +86,6 @@ impl AzBuf for DisplayInfo {
         if let Some(background) = &self.background {
             background.azalea_write(buf)?;
         }
-        self.x.azalea_write(buf)?;
-        self.y.azalea_write(buf)?;
         Ok(())
     }
 }
@@ -151,8 +143,6 @@ mod tests {
                             show_toast: true,
                             hidden: false,
                             background: None,
-                            x: 0.0,
-                            y: 0.0,
                         })),
                         requirements: Vec::new(),
                         sends_telemetry_event: false,
@@ -230,16 +220,26 @@ mod template_tests {
 
     #[test]
     fn display_icons_are_templates() {
-        // DisplayInfo as 26.2 writes it: title and description (NBT strings), the icon (item,
-        // count 1, empty patch), the frame (goal = 2), flags (toast), x, y.
+        // DisplayInfo as 26.3 writes it: title and description (NBT strings), the
+        // icon (item, count 1, empty patch), the frame (goal = 2) and flags (toast).
+        // The x and y come after it, in PositionedAdvancement.
         let mut b = vec![8, 0, 2, b'H', b'i', 8, 0, 3, b'Y', b'o', b'u'];
-        azalea_registry::builtin::ItemKind::GrassBlock.to_u32().azalea_write_var(&mut b).unwrap();
+        azalea_registry::builtin::ItemKind::GrassBlock
+            .to_u32()
+            .azalea_write_var(&mut b)
+            .unwrap();
         b.extend([1, 0, 0, 2]);
         b.extend(2u32.to_be_bytes());
-        b.extend(1.5f32.to_be_bytes());
-        b.extend((-2f32).to_be_bytes());
-        let d = DisplayInfo::azalea_read(&mut Cursor::new(b.as_slice())).unwrap();
-        assert_eq!((d.icon.kind, d.icon.count, d.frame), (azalea_registry::builtin::ItemKind::GrassBlock, 1, FrameType::Goal));
-        assert_eq!((d.title.to_string().as_str(), d.show_toast, d.hidden, d.x, d.y), ("Hi", true, false, 1.5, -2.));
+        let mut cursor = Cursor::new(b.as_slice());
+        let d = DisplayInfo::azalea_read(&mut cursor).unwrap();
+        assert_eq!(
+            (d.icon.kind, d.icon.count, d.frame),
+            (azalea_registry::builtin::ItemKind::GrassBlock, 1, FrameType::Goal)
+        );
+        assert_eq!(
+            (d.title.to_string().as_str(), d.show_toast, d.hidden),
+            ("Hi", true, false)
+        );
+        assert_eq!(cursor.position() as usize, b.len());
     }
 }
