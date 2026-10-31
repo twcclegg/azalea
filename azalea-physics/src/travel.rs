@@ -4,13 +4,13 @@ use azalea_core::{
     position::{BlockPos, Vec3},
 };
 use azalea_entity::{
-    Attributes, GroundContact, HasClientLoaded, Jumping, LocalEntity, LookDirection,
+    ActiveEffects, Attributes, GroundContact, HasClientLoaded, Jumping, LocalEntity, LookDirection,
     MovementResult, OnClimbable, Physics, PlayerAbilities, Pose, Position, StuckSpeedMultiplier,
     TravelCtx, is_on_climbable,
     metadata::{FallFlying, Sprinting},
     move_relative, view_vector,
 };
-use azalea_registry::builtin::BlockKind;
+use azalea_registry::builtin::{BlockKind, MobEffect};
 use azalea_world::{World, WorldName, Worlds};
 use bevy_ecs::prelude::*;
 
@@ -41,6 +41,7 @@ pub fn travel_until_moved(
                 Option<&Sprinting>,
                 Option<&Pose>,
                 Option<&PlayerAbilities>,
+                Option<&ActiveEffects>,
             ),
             (
                 &mut Physics,
@@ -70,6 +71,7 @@ pub fn travel_until_moved(
             sprinting,
             pose,
             abilities,
+            effects,
         ),
         (
             mut physics,
@@ -115,7 +117,8 @@ pub fn travel_until_moved(
             // minecraft also checks for `this.isAffectedByFluids() &&
             // !this.canStandOnFluid(fluidAtBlock)` here but it doesn't matter
             // for players
-            travel_in_fluid(&mut ctx, &mut travel_ctx);
+            let dolphins_grace = effects.is_some_and(|e| e.get(MobEffect::DolphinsGrace).is_some());
+            travel_in_fluid(&mut ctx, &mut travel_ctx, dolphins_grace);
         } else if fall_flying
             .as_deref()
             .is_some_and(|fall_flying| **fall_flying)
@@ -195,8 +198,9 @@ pub fn travel_post_move(
                 // if (this.shouldDiscardFriction()) {
                 //     this.setDeltaMovement(movement.x, yMovement, movement.z);
                 // } else {
-                //     this.setDeltaMovement(movement.x * (double)inertia, yMovement *
-                // 0.9800000190734863D, movement.z * (double)inertia); }
+                //     this.setDeltaMovement(movement.x * (double)inertia,
+                // yMovement * 0.9800000190734863D, movement.z *
+                // (double)inertia); }
 
                 // if should_discard_friction(self) {
 
@@ -303,7 +307,7 @@ fn travel_in_air(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx) {
     *travel_ctx = TravelCtx::Air { inertia };
 }
 
-fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx) {
+fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx, dolphins_grace: bool) {
     let moving_down = ctx.physics.velocity.y <= 0.;
     let y = ctx.position.y;
 
@@ -328,9 +332,9 @@ fn travel_in_fluid(ctx: &mut MoveCtx, travel_ctx: &mut TravelCtx) {
                 * water_efficiency_modifier;
         }
 
-        // if (this.hasEffect(MobEffects.DOLPHINS_GRACE)) {
-        //     waterMovementSpeed = 0.96F;
-        // }
+        if dolphins_grace {
+            water_movement_speed = 0.96;
+        }
 
         move_relative(ctx.physics, ctx.direction, speed, acceleration);
         move_colliding(ctx, ctx.physics.velocity);
