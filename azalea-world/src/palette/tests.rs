@@ -98,7 +98,11 @@ fn test_resize_to_global_fits_any_state() {
         PaletteKind::Global
     );
     // Same as vanilla's ceillog2(registry size)
-    assert_eq!(palette_container.bits_per_entry, 15);
+    let registry_size = BlockState::MAX_STATE as u32 + 1;
+    assert_eq!(
+        palette_container.bits_per_entry as u32,
+        registry_size.next_power_of_two().trailing_zeros()
+    );
 
     assert_eq!(palette_container.get_at_index(256), high);
     for i in 0..256 {
