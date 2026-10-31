@@ -27,37 +27,44 @@ pub fn update_in_water_state_and_do_fluid_pushing(
         };
         let world = world_lock.read();
 
-        // reset the heights since they're going to be set in
-        // update_in_water_state_and_do_water_current_pushing
-        physics.water_fluid_height = 0.;
-        physics.lava_fluid_height = 0.;
-
-        update_in_water_state_and_do_water_current_pushing(&mut physics, &world, *position);
-
-        // right now doing registries.dimension_type() clones the entire
-        // registry which is very inefficient, so for now we're doing
-        // this instead
-
-        let is_ultrawarm = world
-            .registries
-            .dimension_type
-            .map
-            .get(&**world_name)
-            .and_then(|i| i.ultrawarm)
-            .unwrap_or_default();
-        let lava_push_factor = if is_ultrawarm {
-            0.007
-        } else {
-            0.0023333333333333335
-        };
-
-        update_fluid_height_and_do_fluid_pushing(
-            &mut physics,
-            &world,
-            FluidKind::Lava,
-            lava_push_factor,
-        );
+        update_fluid_interaction(&mut physics, &world, world_name, *position);
     }
+}
+
+/// Entity.updateFluidInteraction: the water and lava heights the entity is in,
+/// and their currents pushing it. Done at the start of the tick and, when not
+/// in water, again after the entity moves (LivingEntity.checkFallDamage).
+pub(crate) fn update_fluid_interaction(
+    physics: &mut Physics,
+    world: &World,
+    world_name: &WorldName,
+    position: Position,
+) {
+    // reset the heights since they're going to be set in
+    // update_in_water_state_and_do_water_current_pushing
+    physics.water_fluid_height = 0.;
+    physics.lava_fluid_height = 0.;
+
+    update_in_water_state_and_do_water_current_pushing(physics, world, position);
+
+    // right now doing registries.dimension_type() clones the entire
+    // registry which is very inefficient, so for now we're doing
+    // this instead
+
+    let is_ultrawarm = world
+        .registries
+        .dimension_type
+        .map
+        .get(&**world_name)
+        .and_then(|i| i.ultrawarm)
+        .unwrap_or_default();
+    let lava_push_factor = if is_ultrawarm {
+        0.007
+    } else {
+        0.0023333333333333335
+    };
+
+    update_fluid_height_and_do_fluid_pushing(physics, world, FluidKind::Lava, lava_push_factor);
 }
 fn update_in_water_state_and_do_water_current_pushing(
     physics: &mut Physics,

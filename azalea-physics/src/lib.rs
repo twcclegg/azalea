@@ -19,7 +19,7 @@ use azalea_core::{
 use azalea_entity::{
     ActiveEffects, Attributes, EntityGeometryUpdateSystems, EntityKindComponent, GroundContact,
     HasClientLoaded, Jumping, LocalEntity, LookDirection, MovementResult, OnClimbable, Physics,
-    Pose, Position, StuckSpeedMultiplier,
+    PlayerAbilities, Pose, Position, StuckSpeedMultiplier,
     dimensions::EntityDimensions,
     metadata::{AbstractLiving, Sprinting},
     move_relative, on_pos, on_pos_legacy,
@@ -363,11 +363,7 @@ pub fn bounce_on_block(
 
                 (
                     portion_with_movement * get_effective_gravity(),
-                    azalea_core::math::lerp(
-                        portion_with_movement,
-                        1.0,
-                        attributes.air_drag.calculate(),
-                    ),
+                    azalea_core::math::lerp(portion_with_movement, 1.0, air_drag(attributes)),
                 )
             } else {
                 (0.0, 1.0)
@@ -634,6 +630,16 @@ fn handle_entity_inside_block(
     }
 }
 
+/// LivingEntity.getAirDrag for an entity that isn't an omnidirectional air
+/// mover (players aren't; bees, parrots and sulfur cubes are):
+/// computeModifiedFriction of the vertical air drag, 0.98, by the
+/// air_drag_modifier attribute. The attribute is a modifier of the drag, not
+/// the drag itself.
+fn air_drag(attributes: &Attributes) -> f64 {
+    let modifier = attributes.air_drag.calculate() as f32;
+    f64::from((1. - (1. - 0.98f32) * modifier).clamp(0., 1.))
+}
+
 // can't imagine that's the only block that currently has client side effect
 // when stepping on, therefore minimal args
 fn handle_entity_step_on(
@@ -643,7 +649,7 @@ fn handle_entity_step_on(
 ) {
     if BlockKind::SlimeBlock == block {
         let y_absolute = physics.velocity.y.abs();
-        if y_absolute > 0.1 && !client_movement.trying_to_crouch {
+        if y_absolute < 0.1 && !client_movement.trying_to_crouch {
             let scale = 0.4 + y_absolute * 0.2;
             physics.velocity.x *= scale;
             physics.velocity.z *= scale;
@@ -720,6 +726,7 @@ fn handle_relative_friction_and_calculate_movement(ctx: &mut MoveCtx, block_fric
             ctx.attributes,
             block_friction,
             ctx.sprinting,
+            ctx.abilities,
         ),
         Vec3::new(
             ctx.physics.x_acceleration as f64,
@@ -782,14 +789,23 @@ fn get_friction_influenced_speed(
     attributes: &Attributes,
     friction: f32,
     sprinting: Sprinting,
+    abilities: Option<&PlayerAbilities>,
 ) -> f32 {
-    // TODO: have speed & flying_speed fields in entity
     if ground_contact.on_ground() {
         let speed = attributes.movement_speed.calculate() as f32;
         speed * (0.21600002f32 / (friction * friction * friction))
+    } else if let Some(abilities) = abilities.filter(|a| a.flying) {
+        // Player.getFlyingSpeed: the abilities' flying speed, doubled
+        // sprinting.
+        if *sprinting {
+            abilities.flying_speed * 2.
+        } else {
+            abilities.flying_speed
+        }
+    } else if *sprinting {
+        0.025999999f32
     } else {
-        // entity.flying_speed
-        if *sprinting { 0.025999999f32 } else { 0.02 }
+        0.02
     }
 }
 
@@ -864,6 +880,13 @@ pub fn update_falling_distance(
             block_state_below,
             block_pos_below,
         );
+
+        // LivingEntity.checkFallDamage updates the fluids the entity is in
+        // after the move, unless it's in water: travelInLava's shallow-lava
+        // check then sees where the move left it.
+        if !physics.is_in_water() {
+            fluids::update_fluid_interaction(&mut physics, &world, world_name, *position);
+        }
     }
 }
 
